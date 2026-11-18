@@ -143,6 +143,10 @@ export interface EncounterDef {
   level: number; // 敵のレベル
   waves: string[][]; // 敵の id の並び（群れごと）
   kind?: 'farm' | 'boss';
+  group?: string; // 同じ材料の戦いの段階をまとめる名前
+  tier?: number; // 段階（1＝I、2＝II…）
+  unlock?: string; // この戦いに勝つと挑めるようになる
+  gearOdds?: Record<number, number>; // 出る装備の★の重み（例 { 2: 60, 3: 35, 4: 5 }）
   recommend?: number; // おすすめの戦力
   rewards?: RewardDef;
   firstClear?: RewardDef; // はじめて勝ったときに、さらにもらえる

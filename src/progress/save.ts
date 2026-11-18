@@ -21,6 +21,7 @@ export interface CharProgress {
 export interface GearPiece {
   id: number;
   slot: SlotId;
+  rarity: number; // ★2〜★5
   level: number;
   main: StatKey;
   subs: { stat: StatKey; value: number }[];
@@ -84,6 +85,8 @@ export function validateSave(raw: unknown): SaveData | null {
   const slotIds = SLOTS.map((s) => s.id as string);
   for (const g of raw.gear) {
     if (!isObj(g) || !isInt(g.id, 1, 1e9) || !slotIds.includes(g.slot as string) || !isInt(g.level, 0, 99)) return null;
+    if (g.rarity === undefined) g.rarity = 3; // レア度がなかったころの保存データは★3として読む
+    if (!isInt(g.rarity, 2, 5)) return null;
     if (typeof g.main !== 'string' || !(g.main in STAT_NAMES)) return null;
     if (!Array.isArray(g.subs) || g.subs.length > 4) return null;
     for (const s of g.subs) if (!isObj(s) || typeof s.stat !== 'string' || !(s.stat in STAT_NAMES) || !isNum(s.value, 0, 1e6)) return null;

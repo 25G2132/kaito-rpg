@@ -277,7 +277,7 @@ describe('群れと勝ち負け', () => {
 
   it('練習の群れには必ず勝てる', () => {
     for (let seed = 1; seed <= 10; seed++) {
-      const b = new Battle(GAME_DATA, { party: party(), encounter: { ...GAME_DATA.encounters.patrol, level: 20 }, seed });
+      const b = new Battle(GAME_DATA, { party: party(), encounter: { ...GAME_DATA.encounters.patrol1, level: 20 }, seed });
       expect(runAuto(b)).toBe('won');
     }
   });
@@ -331,7 +331,7 @@ describe('データ', () => {
     const data: GameData = { ...GAME_DATA, characters: { ...GAME_DATA.characters, test_shadow: newcomer } };
     const b = new Battle(data, {
       party: ['test_shadow', 'shin', 'akari', 'hayate'].map((id) => ({ id, level: 20 })),
-      encounter: 'patrol',
+      encounter: 'patrol1',
       seed: 3,
     });
     expect(runAuto(b)).toBe('won');

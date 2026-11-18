@@ -3,9 +3,9 @@ import { Battle } from '../battle/battle';
 import { runAuto } from '../battle/auto';
 import { makeRng } from '../battle/rng';
 import { GAME_DATA } from '../data';
-import { SLOTS } from '../data/gear';
+import { RARITIES, SLOTS } from '../data/gear';
 import { WEAPONS } from '../data/weapons';
-import { enhanceGear, equipGear, gearMainValue, makeGear } from './gear';
+import { enhanceGear, equipGear, gearMainValue, makeGear, rollRarity } from './gear';
 import {
   addExp,
   applyRewards,
@@ -16,6 +16,7 @@ import {
   equipWeapon,
   expToNext,
   finalStats,
+  isUnlocked,
   levelCap,
   memberFor,
   partyFor,
@@ -107,7 +108,7 @@ describe('技レベルと武器', () => {
     expect(raiseSkill(s, 'akari')).toBe(true);
     expect(s.chars.akari.skill).toBe(2);
     const hit = (save: SaveData) => {
-      const b = new Battle(GAME_DATA, { party: [memberFor(save, 'akari')], encounter: { ...GAME_DATA.encounters.patrol, waves: [['robot']] }, seed: 1 });
+      const b = new Battle(GAME_DATA, { party: [memberFor(save, 'akari')], encounter: { ...GAME_DATA.encounters.patrol1, waves: [['robot']] }, seed: 1 });
       b.allies[0].stats.critRate = 0;
       b.phase = 'command';
       b.activeId = b.allies[0].uid;
@@ -135,25 +136,55 @@ describe('技レベルと武器', () => {
 });
 
 describe('装備', () => {
-  it('主な効果は枠で決まり、副ステータスは2〜3つでランダム（主と同じものは出ない）', () => {
+  it('主な効果は枠で決まり、副ステータスの数は★で決まり、中身はランダム（主と同じものは出ない）', () => {
     const rng = makeRng(7);
     const seen = new Set<string>();
-    for (let i = 0; i < 50; i++) {
-      const g = makeGear(rng, i + 1);
-      const slot = SLOTS.find((x) => x.id === g.slot)!;
-      expect(g.main).toBe(slot.main);
-      expect(g.subs.length).toBeGreaterThanOrEqual(2);
-      expect(g.subs.length).toBeLessThanOrEqual(3);
-      expect(g.subs.some((x) => x.stat === g.main)).toBe(false);
-      seen.add(g.subs.map((x) => x.stat).join());
+    for (const r of [2, 3, 4, 5]) {
+      for (let i = 0; i < 30; i++) {
+        const g = makeGear(rng, i + 1, undefined, r);
+        const slot = SLOTS.find((x) => x.id === g.slot)!;
+        expect(g.main).toBe(slot.main);
+        expect(g.rarity).toBe(r);
+        expect(g.subs.length).toBeGreaterThanOrEqual(RARITIES[r].subs[0]);
+        expect(g.subs.length).toBeLessThanOrEqual(RARITIES[r].subs[1]);
+        expect(g.subs.some((x) => x.stat === g.main)).toBe(false);
+        seen.add(g.subs.map((x) => x.stat).join());
+      }
     }
-    expect(seen.size).toBeGreaterThan(10); // 毎回ちがう
+    expect(seen.size).toBeGreaterThan(20); // 毎回ちがう
+  });
+
+  it('★が高いほど主な効果が強く、強化の上限も高い', () => {
+    const rng = makeRng(1);
+    const vals = [2, 3, 4, 5].map((r) => gearMainValue(makeGear(rng, 1, 'gloves', r)));
+    for (let i = 1; i < vals.length; i++) expect(vals[i]).toBeGreaterThan(vals[i - 1]);
+    const s = defaultSave();
+    s.items.parts = 9999;
+    s.gear.push(makeGear(rng, 1, 'mask', 2));
+    for (let i = 0; i < 20; i++) enhanceGear(s, 1, rng);
+    expect(s.gear[0].level).toBe(RARITIES[2].maxLevel);
+  });
+
+  it('★の出かたは、段階の重みのとおり（上の段階ほど★5が出る）', () => {
+    const rng = makeRng(11);
+    const count = (odds: Record<number, number>) => {
+      const c: Record<number, number> = {};
+      for (let i = 0; i < 2000; i++) {
+        const r = rollRarity(rng, odds);
+        c[r] = (c[r] ?? 0) + 1;
+      }
+      return c;
+    };
+    const low = count(GAME_DATA.encounters.patrol1.gearOdds!);
+    const high = count(GAME_DATA.encounters.patrol3.gearOdds!);
+    expect(low[5] ?? 0).toBe(0);
+    expect(high[5] ?? 0).toBeGreaterThan(150);
   });
 
   it('強化で主な効果が伸び、3レベルごとに副ステータスが増える／伸びる', () => {
     const s = defaultSave();
     const rng = makeRng(3);
-    const g = makeGear(rng, 1, 'gloves');
+    const g = makeGear(rng, 1, 'gloves', 4);
     g.subs = g.subs.slice(0, 2);
     s.gear.push(g);
     expect(enhanceGear(s, 1, rng).ok).toBe(false); // 部品がない
@@ -182,6 +213,14 @@ describe('装備', () => {
     expect(s.gear.filter((g) => g.owner === 'akari')).toHaveLength(1);
     expect(s.gear[1].owner).toBe('akari');
   });
+
+  it('レア度のない古い保存データは★3として読む', () => {
+    const s = defaultSave();
+    s.gear.push(makeGear(makeRng(1), 1, 'mask'));
+    const raw = clone(s) as unknown as { gear: Record<string, unknown>[] };
+    delete raw.gear[0].rarity;
+    expect(validateSave(raw)?.gear[0].rarity).toBe(3);
+  });
 });
 
 describe('ごほうび', () => {
@@ -195,56 +234,71 @@ describe('ごほうび', () => {
     expect(s.wins.vault).toBe(1);
     const r2 = rollRewards(vault, rng, s);
     expect(r2.items.book).toBeUndefined();
-    const patrol = GAME_DATA.encounters.patrol;
-    const r3 = rollRewards(patrol, rng, s);
-    expect(r3.gear).toHaveLength(3);
+    const p3 = GAME_DATA.encounters.patrol3;
+    const r3 = rollRewards(p3, rng, s);
+    expect(r3.gear).toHaveLength(2);
+    for (const g of r3.gear) expect(Object.keys(p3.gearOdds!)).toContain(String(g.rarity));
     const n = s.gear.length;
-    applyRewards(s, r3, patrol);
-    expect(s.gear).toHaveLength(n + 3);
+    applyRewards(s, r3, p3);
+    expect(s.gear).toHaveLength(n + 2);
     expect(new Set(s.gear.map((g) => g.id)).size).toBe(s.gear.length);
+  });
+
+  it('上の段階は、前の段階に勝つと挑める', () => {
+    const s = defaultSave();
+    const e = GAME_DATA.encounters;
+    expect(isUnlocked(s, e.patrol1)).toBe(true);
+    expect(isUnlocked(s, e.patrol2)).toBe(false);
+    applyRewards(s, rollRewards(e.patrol1, makeRng(1), s), e.patrol1);
+    expect(isUnlocked(s, e.patrol2)).toBe(true);
+    expect(isUnlocked(s, e.patrol3)).toBe(false);
   });
 });
 
 describe('釣り合い（何百回も戦わせて勝率を出す）', () => {
-  function bossRate(save: SaveData, n: number): number {
+  const winRate = (save: SaveData, enc: string, n: number, seed0 = 5000) => {
     let w = 0;
-    for (let i = 0; i < n; i++) {
-      if (runAuto(new Battle(GAME_DATA, { party: partyFor(save), encounter: 'vault', seed: 5000 + i })) === 'won') w++;
-    }
+    for (let i = 0; i < n; i++) if (runAuto(new Battle(GAME_DATA, { party: partyFor(save), encounter: enc, seed: seed0 + i })) === 'won') w++;
     return w / n;
-  }
-  /** 材料の戦いを farms 回くり返して、おまかせで育てる */
+  };
+  /** 材料の戦いを farms 回くり返して、おまかせで育てる。挑める一番上の段階へ行き、負けた段階はしばらく避ける */
   function grow(farms: number, seed: number): SaveData {
     const rng = makeRng(seed);
     const s = defaultSave();
     autoInvest(s, rng);
+    const lostAt: Record<string, number> = {};
     for (let k = 1; k <= farms; k++) {
-      const enc = GAME_DATA.encounters[k % 2 ? 'patrol' : 'archive'];
+      const group = k % 2 ? 'patrol' : 'archive';
+      let tier = 3;
+      while (tier > 1 && (!isUnlocked(s, GAME_DATA.encounters[group + tier]) || (lostAt[group + tier] ?? -99) > k - 5)) tier--;
+      const enc = GAME_DATA.encounters[group + tier];
       const b = new Battle(GAME_DATA, { party: partyFor(s), encounter: enc.id, seed: seed * 1000 + k });
       if (runAuto(b) === 'won') applyRewards(s, rollRewards(enc, rng, s), enc);
+      else lostAt[enc.id] = k;
       autoInvest(s, rng);
     }
     return s;
   }
 
   it('育てずにボスへ行くと、まず負ける', () => {
-    expect(bossRate(defaultSave(), 100)).toBeLessThanOrEqual(0.05);
+    expect(winRate(defaultSave(), 'vault', 100)).toBeLessThanOrEqual(0.05);
   });
 
-  it('はじめから材料の戦いには勝てる', () => {
+  it('はじめから段階 I には勝てる。上の段階ほど勝ちにくい', () => {
     const s = defaultSave();
-    for (const id of ['patrol', 'archive']) {
-      let w = 0;
-      for (let i = 0; i < 20; i++) if (runAuto(new Battle(GAME_DATA, { party: partyFor(s), encounter: id, seed: i })) === 'won') w++;
-      expect(w, id).toBeGreaterThanOrEqual(18);
+    for (const g of ['patrol', 'archive']) {
+      const r1 = winRate(s, g + '1', 30);
+      const r3 = winRate(s, g + '3', 30);
+      expect(r1, g).toBeGreaterThanOrEqual(0.9);
+      expect(r3, g).toBeLessThan(r1);
     }
   });
 
-  it('少し育てただけでは、まだ勝ちにくい（材料の戦い4回）', () => {
-    expect(bossRate(grow(4, 1), 100)).toBeLessThanOrEqual(0.3);
+  it('材料の戦い10回では、まだボスに勝てない', () => {
+    for (const seed of [1, 2]) expect(winRate(grow(10, seed), 'vault', 50), 'seed ' + seed).toBeLessThanOrEqual(0.1);
   });
 
-  it('材料の戦いを10回くり返して育てると、ボスにほぼ勝てる', () => {
-    for (const seed of [1, 2, 3]) expect(bossRate(grow(10, seed), 100), `seed ${seed}`).toBeGreaterThanOrEqual(0.9);
+  it('材料の戦いを25回くり返して育てると、ボスにほぼ勝てる', () => {
+    for (const seed of [1, 2, 3]) expect(winRate(grow(25, seed), 'vault', 100), 'seed ' + seed).toBeGreaterThanOrEqual(0.9);
   });
 });

@@ -3,8 +3,8 @@
 import type { Rng } from '../battle/rng';
 import {
   enhanceCost,
-  GEAR_MAX_LEVEL,
   MAX_SUBS,
+  RARITIES,
   SLOTS,
   SUB_EVERY,
   SUB_ROLLS,
@@ -15,28 +15,43 @@ import type { GearPiece, SaveData } from './save';
 
 const SUB_POOL = Object.keys(SUB_ROLLS) as StatKey[];
 
-const roll = (rng: Rng, stat: StatKey): number => {
+const roll = (rng: Rng, stat: StatKey, rarity: number): number => {
   const [lo, hi] = SUB_ROLLS[stat];
-  const v = lo + (hi - lo) * rng();
+  const v = (lo + (hi - lo) * rng()) * RARITIES[rarity].subMult;
   return stat === 'hp' || stat === 'atk' || stat === 'def' || stat === 'spd' ? Math.round(v) : Math.round(v * 1000) / 1000;
 };
 
-/** 新しい装備（副ステータスは2つか3つ、ランダム） */
-export function makeGear(rng: Rng, id: number, slot?: SlotId): GearPiece {
+/** 出る★を重みで選ぶ（例 { 2: 60, 3: 35, 4: 5 }） */
+export function rollRarity(rng: Rng, odds: Record<number, number>): number {
+  const entries = Object.entries(odds).map(([k, w]) => [Number(k), w] as const);
+  const total = entries.reduce((a, [, w]) => a + w, 0);
+  let r = rng() * total;
+  for (const [k, w] of entries) {
+    r -= w;
+    if (r < 0) return k;
+  }
+  return entries[entries.length - 1][0];
+}
+
+export const maxGearLevel = (g: GearPiece) => RARITIES[g.rarity].maxLevel;
+
+/** 新しい装備（副ステータスの数は★で決まり、中身はランダム） */
+export function makeGear(rng: Rng, id: number, slot?: SlotId, rarity = 3): GearPiece {
   const def = slot ? SLOTS.find((s) => s.id === slot)! : SLOTS[Math.floor(rng() * SLOTS.length)];
-  const count = rng() < 0.3 ? 3 : 2;
+  const [lo, hi] = RARITIES[rarity].subs;
+  const count = rng() < 0.3 ? hi : lo;
   const pool = SUB_POOL.filter((s) => s !== def.main);
   const subs: GearPiece['subs'] = [];
   while (subs.length < count) {
     const stat = pool.splice(Math.floor(rng() * pool.length), 1)[0];
-    subs.push({ stat, value: roll(rng, stat) });
+    subs.push({ stat, value: roll(rng, stat, rarity) });
   }
-  return { id, slot: def.id, level: 0, main: def.main, subs, owner: null };
+  return { id, slot: def.id, rarity, level: 0, main: def.main, subs, owner: null };
 }
 
 export function gearMainValue(g: GearPiece): number {
   const def = SLOTS.find((s) => s.id === g.slot)!;
-  const v = def.mainBase + def.mainPerLevel * g.level;
+  const v = (def.mainBase + def.mainPerLevel * g.level) * RARITIES[g.rarity].mainMult;
   return def.main === 'spd' || def.main === 'hp' || def.main === 'atk' ? Math.round(v) : Math.round(v * 1000) / 1000;
 }
 
@@ -48,7 +63,7 @@ export type EnhanceResult =
 export function enhanceGear(save: SaveData, gearId: number, rng: Rng): EnhanceResult {
   const g = save.gear.find((x) => x.id === gearId);
   if (!g) return { ok: false, reason: '装備が見つからない' };
-  if (g.level >= GEAR_MAX_LEVEL) return { ok: false, reason: 'これ以上強くできない' };
+  if (g.level >= maxGearLevel(g)) return { ok: false, reason: 'これ以上強くできない' };
   const cost = enhanceCost(g.level);
   if ((save.items.parts ?? 0) < cost) return { ok: false, reason: `部品が${cost}個いる` };
   save.items.parts -= cost;
@@ -57,11 +72,11 @@ export function enhanceGear(save: SaveData, gearId: number, rng: Rng): EnhanceRe
   if (g.subs.length < MAX_SUBS) {
     const pool = SUB_POOL.filter((s) => s !== g.main && !g.subs.some((x) => x.stat === s));
     const stat = pool[Math.floor(rng() * pool.length)];
-    g.subs.push({ stat, value: roll(rng, stat) });
+    g.subs.push({ stat, value: roll(rng, stat, g.rarity) });
     return { ok: true, newSub: stat };
   }
   const sub = g.subs[Math.floor(rng() * g.subs.length)];
-  sub.value = Math.round((sub.value + roll(rng, sub.stat)) * 1000) / 1000;
+  sub.value = Math.round((sub.value + roll(rng, sub.stat, g.rarity)) * 1000) / 1000;
   return { ok: true, grew: sub.stat };
 }
 

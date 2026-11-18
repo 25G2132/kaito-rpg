@@ -44,6 +44,23 @@ export const SUB_ROLLS: Record<StatKey, [number, number]> = {
 };
 
 export const GEAR_MAX_LEVEL = 15;
+
+/** レア度（★2〜★5）。★が高いほど主な効果が強く、副ステータスが多く、強化の上限が高い */
+export interface RarityDef {
+  stars: number;
+  name: string;
+  color: string;
+  mainMult: number; // 主な効果の倍率
+  subMult: number; // 副ステータス1回ぶんの倍率
+  subs: [number, number]; // はじめの副ステータスの数（少ないとき・多いとき）
+  maxLevel: number;
+}
+export const RARITIES: Record<number, RarityDef> = {
+  2: { stars: 2, name: '★2', color: '#8fd18f', mainMult: 0.55, subMult: 0.7, subs: [1, 1], maxLevel: 6 },
+  3: { stars: 3, name: '★3', color: '#6ab8ff', mainMult: 0.75, subMult: 0.85, subs: [1, 2], maxLevel: 9 },
+  4: { stars: 4, name: '★4', color: '#c58bff', mainMult: 1.0, subMult: 1.0, subs: [2, 3], maxLevel: 12 },
+  5: { stars: 5, name: '★5', color: '#ffc93d', mainMult: 1.3, subMult: 1.15, subs: [3, 4], maxLevel: 15 },
+};
 export const SUB_EVERY = 3; // 3レベルごとに副ステータス
 export const MAX_SUBS = 4;
 /** 強化1回に要る部品（今のレベル＋2） */

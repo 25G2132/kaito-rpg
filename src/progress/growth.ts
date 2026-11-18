@@ -9,7 +9,7 @@ import { CHARACTERS } from '../data/characters';
 import { SLOTS } from '../data/gear';
 import { BOOK_EXP } from '../data/items';
 import { WEAPONS } from '../data/weapons';
-import { equipGear, equippedGear, enhanceGear, gearScore, makeGear, sumGear } from './gear';
+import { equipGear, equippedGear, enhanceGear, gearScore, makeGear, maxGearLevel, rollRarity, sumGear } from './gear';
 import type { GearPiece, SaveData } from './save';
 
 // ---------- 章ごとの上限 ----------
@@ -196,7 +196,7 @@ export function rollRewards(enc: EncounterDef, rng: Rng, save: SaveData): Reward
       const n = lo + Math.floor(rng() * (hi - lo + 1));
       if (n > 0) out.items[k] = (out.items[k] ?? 0) + n;
     }
-    for (let i = 0; i < r!.gear; i++) out.gear.push(makeGear(rng, 0));
+    for (let i = 0; i < r!.gear; i++) out.gear.push(makeGear(rng, 0, undefined, rollRarity(rng, enc.gearOdds ?? { 3: 1 })));
   }
   return out;
 }
@@ -215,6 +215,11 @@ export function applyRewards(save: SaveData, reward: Reward, enc: EncounterDef):
   }
   save.wins[enc.id] = (save.wins[enc.id] ?? 0) + 1;
   return ups;
+}
+
+/** 挑めるか（前の段階に勝っていれば挑める） */
+export function isUnlocked(save: SaveData, enc: EncounterDef): boolean {
+  return !enc.unlock || (save.wins[enc.unlock] ?? 0) > 0;
 }
 
 export function recordLoss(save: SaveData, enc: EncounterDef): void {
@@ -257,7 +262,7 @@ export function autoInvest(save: SaveData, rng: Rng): void {
   }
   // 付けている装備を、レベルの低い順に強化
   for (let guard = 0; guard < 500; guard++) {
-    const worn = save.gear.filter((g) => g.owner && g.level < 15).sort((a, b) => a.level - b.level);
+    const worn = save.gear.filter((g) => g.owner && g.level < maxGearLevel(g)).sort((a, b) => a.level - b.level);
     if (!worn.length || !enhanceGear(save, worn[0].id, rng).ok) break;
   }
 }
