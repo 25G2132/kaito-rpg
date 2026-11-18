@@ -61,7 +61,31 @@ export function start(): void {
       ctrl?.toggleSpeed();
       speed = ctrl?.speed ?? speed;
     },
+    onPause: () => showPause(),
   });
+
+  /** 一時停止：続ける／撤退する（撤退は負けに数えない） */
+  function showPause(): void {
+    const c = ctrl;
+    if (!c || c.isPaused) return;
+    c.setPaused(true);
+    const p = hud.overlay(
+      `<h1 style="text-align:center">一時停止</h1>
+       <div class="choices" style="margin-top:10px">
+         <button class="choice" data-act="resume"><b>続ける</b><span>戦いにもどる</span></button>
+         <button class="choice" data-act="retreat"><b>撤退する</b><span>拠点へもどる（負けには数えない）</span></button>
+       </div>`,
+    );
+    p.querySelector('[data-act="resume"]')?.addEventListener('click', () => {
+      hud.closeOverlay();
+      c.setPaused(false);
+    });
+    p.querySelector('[data-act="retreat"]')?.addEventListener('click', () => {
+      hud.closeOverlay();
+      c.setPaused(false);
+      c.stop();
+    });
+  }
 
   canvas.addEventListener('pointerdown', (ev) => {
     if (!ctrl) return;
@@ -189,6 +213,10 @@ export function start(): void {
     ctrl = new BattleController({ data: GAME_DATA, stage, hud, clock, party: partyFor(save), encounter: encId, vrms, auto, speed });
     const res = await ctrl.run();
     ctrl = null;
+    if (res.result === 'retreat') {
+      showHub('撤退しました');
+      return;
+    }
     finish(enc, res);
   }
 
@@ -197,7 +225,7 @@ export function start(): void {
     const enc = GAME_DATA.encounters[encId];
     const b = new Battle(GAME_DATA, { party: partyFor(save), encounter: encId, seed: Date.now() });
     const phase = runAuto(b);
-    finish(enc, { result: phase === 'won' ? 'won' : 'lost', turns: b.turnCount, biggest: 0, synergies: 0 }, true);
+    finish(enc, { result: phase === 'won' ? 'won' : 'lost', turns: b.turnCount, biggest: 0, synergies: 0, seconds: 0, totalDamage: 0 }, true);
   }
 
   function finish(enc: EncounterDef, res: RunResult, skipped = false): void {
@@ -217,7 +245,10 @@ export function start(): void {
       .filter((id) => save.chars[id].level > beforeLevels[id])
       .map((id) => `${CHARACTERS[id].name} Lv${beforeLevels[id]}→${save.chars[id].level}`)
       .join('　');
-    const stats = skipped ? `自動で終わらせた（番の数 ${res.turns}）` : `番の数 ${res.turns}　いちばん大きな数字 ${res.biggest}　相性 ${res.synergies}回`;
+    const mmss = `${Math.floor(res.seconds / 60)}:${String(res.seconds % 60).padStart(2, '0')}`;
+    const stats = skipped
+      ? `自動で一瞬で終わらせた（番の数 ${res.turns}）`
+      : `かかった時間 ${mmss}　総ダメージ ${res.totalDamage.toLocaleString('ja-JP')}　いちばん大きな数字 ${res.biggest}　相性 ${res.synergies}回`;
     const rewardHtml = reward
       ? `<div class="rewards">${matsHtml(reward.items, true)}${reward.gear.length ? `<span class="mat">装備 ${reward.gear.length}個</span>` : ''}<span class="mat">経験値 +${reward.exp}（4人それぞれ）</span></div>
          ${ups ? `<p style="text-align:center" class="gain">レベルアップ！ ${ups}</p>` : ''}`
@@ -234,7 +265,7 @@ export function start(): void {
        <p style="text-align:center">${stats}</p>
        ${rewardHtml}${advice}
        <div class="choices" style="margin-top:10px">
-         <button class="choice" data-act="again"><b>もう一度</b><span>${esc(enc.name)}</span></button>
+         <button class="choice" data-act="again"><b>再挑戦</b><span>${esc(enc.name)}</span></button>
          <button class="choice" data-act="grow"><b>育てる</b><span>材料を使って強くする</span></button>
          <button class="choice" data-act="hub"><b>拠点へ</b><span>ほかの相手を選ぶ</span></button>
        </div>`,
@@ -267,7 +298,7 @@ export function start(): void {
   });
 
   // 開発サーバーだけ：確かめ用に、戦いを一瞬で終わらせる（公開ページには入らない）
-  if (import.meta.env.DEV) Object.assign(window, { __kaito: { skip: skipBattle, save: () => save, invest: () => autoInvest(save, rng) } });
+  if (import.meta.env.DEV) Object.assign(window, { __kaito: { skip: skipBattle, save: () => save, invest: () => autoInvest(save, rng), hud } });
 
   showHub(loaded.reset ? '保存データが読めなかったので、はじめからにしました' : '');
   // 開発サーバーでは見本の VRM を自動で読む（公開ページには置いていないので、無ければ仮の形のまま）

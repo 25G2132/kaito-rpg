@@ -57,22 +57,54 @@
   margin: 4px 0;
 }
 
-/* ---- 右上：群れ・倍速・自動 ---- */
+/* ---- 右上：自動・倍速・一時停止、その下に総ダメージ。上の中央に群れの数 ---- */
 .topright {
   position: absolute;
   top: max(8px, env(safe-area-inset-top));
   right: max(8px, env(safe-area-inset-right));
   display: flex;
-  gap: 8px;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.tbtns {
+  display: flex;
+  gap: 6px;
+}
+.total {
+  text-align: right;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: linear-gradient(270deg, rgba(16, 19, 32, 0.8), transparent);
+}
+.total .tl {
+  font-size: 10px;
+  opacity: 0.8;
+}
+.total .tn {
+  font-size: 26px;
+  font-weight: 900;
+  line-height: 1.05;
+  color: #fff3d0;
+  text-shadow: 0 2px 0 #000, 0 0 10px rgba(255, 190, 60, 0.5);
+}
+.total .tn.bump {
+  animation: bump calc(0.35s / var(--spd)) ease-out;
 }
 .wave {
+  position: absolute;
+  top: max(8px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
   font-weight: 800;
   font-size: 13px;
-  padding: 4px 10px;
+  padding: 4px 14px;
   border-radius: 8px;
   background: var(--panel);
   letter-spacing: 0.05em;
+}
+.wave:empty {
+  display: none;
 }
 .tbtn {
   min-width: 56px;
@@ -186,7 +218,7 @@
   animation: bob 0.6s infinite alternate;
 }
 
-/* ---- 味方のカード（左下）。満タンならタップで必殺技 ---- */
+/* ---- 味方のカード（下）。顔のまわりの輪が必殺技ゲージ。満タンで光り、タップで必殺技 ---- */
 .party {
   position: absolute;
   left: max(8px, env(safe-area-inset-left));
@@ -196,15 +228,18 @@
 }
 .pcard {
   position: relative;
-  width: 100px;
-  height: 66px;
-  padding: 5px 6px;
+  width: 122px;
+  height: 64px;
+  padding: 6px 8px 6px 6px;
   box-sizing: border-box;
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--panel);
   border: 2px solid rgba(255, 255, 255, 0.15);
   text-align: left;
   color: inherit;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   transition: transform 0.15s;
 }
 .pcard.now {
@@ -215,24 +250,59 @@
   opacity: 0.4;
   filter: grayscale(1);
 }
-.pcard .pname {
-  font-size: 12px;
-  font-weight: 800;
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.face {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  flex: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: conic-gradient(var(--c) var(--e, 0%), rgba(255, 255, 255, 0.14) 0);
 }
-.pcard .elem {
+.face span {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #20263a;
+  color: var(--c);
+  font-size: 19px;
+  font-weight: 900;
+}
+.face em {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  font-size: 10px;
-  line-height: 16px;
-  text-align: center;
+  background: var(--c);
   color: #10131e;
-  flex: none;
+  font: 800 10px/16px system-ui, sans-serif;
+  text-align: center;
+  font-style: normal;
+}
+.pcard.ult .face {
+  box-shadow: 0 0 16px var(--c), 0 0 4px #fff;
+  animation: pulse 0.6s infinite alternate;
+}
+.pcard.ult .face span {
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.45), #20263a 70%);
+  color: #fff;
+}
+.pinfo {
+  flex: 1;
+  min-width: 0;
+}
+.pcard .pname {
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 .pcard .hpnum {
+  white-space: nowrap;
   font-size: 10px;
   opacity: 0.85;
   margin-top: 1px;
@@ -245,36 +315,24 @@
   inset: 0 auto 0 0;
   background: rgba(200, 235, 255, 0.85);
 }
-.pcard .bar.en > i {
-  background: #7aa8ff;
-}
 .pcard .ultlabel {
   position: absolute;
-  inset: -2px;
-  border-radius: 10px;
+  top: -12px;
+  left: 4px;
   display: none;
-  place-items: center;
+  padding: 1px 7px;
+  border-radius: 6px;
+  font-size: 11px;
   font-weight: 900;
-  font-size: 14px;
-  line-height: 1.2;
-  text-align: center;
   color: #10131e;
   background: linear-gradient(135deg, #ffe17a, #ffb12b);
-  box-shadow: 0 0 14px rgba(255, 200, 60, 0.9);
-  animation: pulse 0.7s infinite alternate;
+  box-shadow: 0 0 10px rgba(255, 200, 60, 0.9);
 }
 .pcard.ult .ultlabel {
-  display: grid;
-}
-.pcard.queued .ultlabel {
-  animation: none;
-  background: #ffe9a8;
+  display: block;
 }
 .pcard.queued .ultlabel::after {
   content: '（待機）';
-  font-size: 10px;
-  position: absolute;
-  bottom: 4px;
 }
 
 /* ---- 技のボタン（右下） ---- */
@@ -674,6 +732,86 @@ body:has(#perf) .turnbar {
 }
 
 /* 戦いの外では、右上のボタンも隠す */
-#hud.idle .topright {
+#hud.idle .topright,
+#hud.idle .wave {
   display: none;
+}
+
+/* ---- 必殺技：画面いっぱいの切り替え ---- */
+.ultsplash {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  overflow: hidden;
+  animation: splash calc(1.5s / var(--spd)) ease-out forwards;
+}
+.ultsplash .stripes {
+  position: absolute;
+  inset: -20%;
+  background:
+    repeating-linear-gradient(115deg, transparent 0 38px, rgba(255, 255, 255, 0.18) 38px 46px),
+    linear-gradient(115deg, rgba(8, 10, 18, 0.92) 0 30%, var(--c) 30% 70%, rgba(8, 10, 18, 0.92) 70%);
+  animation: stripes calc(1.5s / var(--spd)) linear forwards;
+}
+.ultsplash .portrait {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 180px;
+  height: 180px;
+  margin: -90px 0 0 -90px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 110px;
+  font-weight: 900;
+  color: #fff;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.35), rgba(0, 0, 0, 0.35));
+  box-shadow: 0 0 40px var(--c), inset 0 0 30px rgba(255, 255, 255, 0.4);
+  text-shadow: 0 4px 0 rgba(0, 0, 0, 0.5);
+  animation: zoomin calc(1.5s / var(--spd)) ease-out forwards;
+}
+.ultsplash .words {
+  position: absolute;
+  right: 7%;
+  top: 22%;
+  text-align: right;
+  text-shadow: 0 3px 0 #000;
+}
+.ultsplash .who {
+  font-size: 16px;
+  font-weight: 800;
+}
+.ultsplash .what {
+  font-size: 40px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+}
+@keyframes splash {
+  0% { opacity: 0; }
+  10% { opacity: 1; }
+  78% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes stripes {
+  from { transform: translateX(-6%); }
+  to { transform: translateX(6%); }
+}
+@keyframes zoomin {
+  0% { transform: scale(2.2); opacity: 0; }
+  15% { transform: scale(0.95); opacity: 1; }
+  25% { transform: scale(1); }
+  100% { transform: scale(1.08); }
+}
+@keyframes bump {
+  0% { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+
+/* 会心はオレンジで大きく */
+.num.crit {
+  font-size: 36px;
+  color: #ffb02e;
+  text-shadow: 0 2px 0 #5a2000, 0 0 10px rgba(255, 120, 0, 0.8);
 }

@@ -14,9 +14,10 @@ const PARTY_POS: [number, number][] = [
   [-4.7, -0.2],
 ];
 const ENEMY_POS: [number, number][] = [
-  [1.6, 0.6],
-  [2.8, -0.5],
-  [4.0, 0.6],
+  // 右上の総ダメージと名札が重ならないよう、右端は少しあける
+  [1.2, 0.6],
+  [2.35, -0.5],
+  [3.5, 0.6],
   [2.2, -1.9],
   [3.6, -1.9],
 ];
@@ -119,7 +120,7 @@ export class Stage {
     b.enemies.forEach((u, i) => {
       const d = b.enemyDef(u)!;
       const a = new ActorView(d.look, -1);
-      const [x, z] = d.boss ? [2.8, -0.9] : ENEMY_POS[i % ENEMY_POS.length];
+      const [x, z] = d.boss ? [2.4, -0.9] : ENEMY_POS[i % ENEMY_POS.length];
       a.root.position.set(x, 0, z);
       this.add(u.uid, a);
       if (appear) {

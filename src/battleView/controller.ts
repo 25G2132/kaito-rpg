@@ -12,10 +12,12 @@ import type { VRM } from '@pixiv/three-vrm';
 type Input = { kind: 'basic' | 'skill' } | { kind: 'wake' };
 
 export interface RunResult {
-  result: 'won' | 'lost';
+  result: 'won' | 'lost' | 'retreat';
   turns: number;
   biggest: number;
   synergies: number;
+  seconds: number; // かかった時間（一時停止の間は数えない）
+  totalDamage: number;
 }
 
 export class BattleController {
@@ -30,6 +32,10 @@ export class BattleController {
   private ultQueue: { uid: string; target?: string }[] = [];
   private waiting: ((i: Input) => void) | null = null;
   private stopped = false;
+  private paused = false;
+  private startedAt = performance.now();
+  private pausedAt = 0;
+  private pausedTotal = 0;
   private biggest = 0;
   private synergies = 0;
 
@@ -60,6 +66,22 @@ export class BattleController {
     this.pickDefaultTarget();
   }
 
+  /** 一時停止：時計を止める（動き・待ちがすべて止まる） */
+  setPaused(on: boolean): void {
+    if (on === this.paused) return;
+    this.paused = on;
+    if (on) {
+      this.pausedAt = performance.now();
+      this.clock.speed = 0;
+    } else {
+      this.pausedTotal += performance.now() - this.pausedAt;
+      this.clock.speed = this.speed;
+    }
+  }
+  get isPaused(): boolean {
+    return this.paused;
+  }
+
   stop(): void {
     this.stopped = true;
     this.wake();
@@ -74,7 +96,7 @@ export class BattleController {
     if (this.battle.sp >= 1) this.answer({ kind: 'skill' });
   }
   tapUlt(uid: string): void {
-    if (this.auto) return;
+    if (this.auto || this.paused) return;
     if (!this.battle.canUlt(uid) || this.ultQueue.some((q) => q.uid === uid)) return;
     this.ultQueue.push({ uid });
     this.refreshUlts();
@@ -93,11 +115,16 @@ export class BattleController {
   }
   toggleSpeed(): void {
     this.speed = this.speed >= 3 ? 1 : this.speed + 1; // ×1 → ×2 → ×3
+    if (this.paused) {
+      this.hud.setSpeed(this.speed);
+      return;
+    }
     this.clock.speed = this.speed;
     this.hud.setSpeed(this.speed);
   }
 
   private answer(i: Input): void {
+    if (this.paused && i.kind !== 'wake') return;
     const w = this.waiting;
     if (!w) return;
     this.waiting = null;
@@ -139,7 +166,9 @@ export class BattleController {
       await this.play(b.command(input.kind, this.target ?? undefined));
     }
     this.hud.showCommand(b, null);
-    return { result: b.phase === 'won' ? 'won' : 'lost', turns: b.turnCount, biggest: this.biggest, synergies: this.synergies };
+    const seconds = Math.round((performance.now() - this.startedAt - this.pausedTotal) / 1000);
+    const result = this.stopped && !b.ended ? 'retreat' : b.phase === 'won' ? 'won' : 'lost';
+    return { result, turns: b.turnCount, biggest: this.biggest, synergies: this.synergies, seconds, totalDamage: this.hud.totalDamage };
   }
 
   private async flushUlts(): Promise<void> {
@@ -197,8 +226,10 @@ export class BattleController {
           const ally = u.side === 'ally';
           const elemColor = this.data.elements[e.element]?.color ?? '#fff';
           if (e.kind === 'ult') {
-            hud.cutin(u.name, e.name, elemColor);
+            hud.ultSplash(u.name, e.name, elemColor);
+            st.shake(0.3);
             await st.ultPose(u.uid);
+            await this.clock.sleep(0.45);
           } else if (e.kind === 'skill' || !ally) {
             hud.banner(e.name, ally ? '' : 'enemy');
           }
@@ -221,7 +252,10 @@ export class BattleController {
             st.burst(e.target, '#ffcc33', 70, 1.6);
             await this.clock.slowMo(0.3, 0.45);
           }
-          if (!ally) this.biggest = Math.max(this.biggest, e.amount);
+          if (!ally) {
+            this.biggest = Math.max(this.biggest, e.amount);
+            hud.addTotal(e.amount);
+          }
           const cls = e.synergy
             ? 'synergy'
             : e.dot

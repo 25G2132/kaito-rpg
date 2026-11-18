@@ -19,6 +19,7 @@ export interface HudHandlers {
   onTarget: (uid: string) => void;
   onAuto: () => void;
   onSpeed: () => void;
+  onPause: () => void;
 }
 
 export class Hud {
@@ -26,6 +27,9 @@ export class Hud {
   private data: GameData;
   private turnbar = el('div', 'turnbar');
   private wave = el('div', 'wave');
+  private pauseBtn = el('button', 'tbtn', 'Ⅱ');
+  private totalBox = el('div', 'total', '<div class="tl">総ダメージ</div><div class="tn">0</div>');
+  private total = 0;
   private autoBtn = el('button', 'tbtn', '自動');
   private speedBtn = el('button', 'tbtn', '×1');
   private party = el('div', 'party');
@@ -45,16 +49,20 @@ export class Hud {
     this.data = data;
     this.h = handlers;
     this.root.id = 'hud';
+    // 右上：自動・倍速・一時停止。その下に総ダメージ。上の中央に群れの数
     const top = el('div', 'topright');
-    top.append(this.wave, this.speedBtn, this.autoBtn);
+    const btns = el('div', 'tbtns');
+    btns.append(this.autoBtn, this.speedBtn, this.pauseBtn);
+    top.append(btns, this.totalBox);
     const row = el('div', 'abtns');
     row.append(this.spBox, this.basicBtn, this.skillBtn);
     this.actions.append(this.sdesc, row);
-    this.root.append(this.fx, this.turnbar, top, this.party, this.actions);
+    this.root.append(this.fx, this.turnbar, this.wave, top, this.party, this.actions);
     document.body.appendChild(this.root);
 
     this.autoBtn.addEventListener('click', () => this.h.onAuto());
     this.speedBtn.addEventListener('click', () => this.h.onSpeed());
+    this.pauseBtn.addEventListener('click', () => this.h.onPause());
     this.basicBtn.addEventListener('click', () => this.h.onBasic());
     this.skillBtn.addEventListener('click', () => this.h.onSkill());
   }
@@ -75,6 +83,7 @@ export class Hud {
     this.tags.clear();
     this.turnbar.innerHTML = '';
     this.wave.textContent = '';
+    this.resetTotal();
     this.actions.classList.add('hidden');
     this.root.classList.add('idle');
   }
@@ -83,6 +92,7 @@ export class Hud {
 
   build(b: Battle): void {
     this.root.classList.remove('idle');
+    this.resetTotal();
     this.party.innerHTML = '';
     this.cards.clear();
     for (const u of b.allies) {
@@ -91,10 +101,10 @@ export class Hud {
       const card = el(
         'button',
         'pcard',
-        `<div class="pname"><span class="elem" style="background:${elem.color}">${elem.name}</span>${u.name}</div>
-         <div class="bar hp"><b></b><i></i></div><div class="hpnum"></div>
-         <div class="bar en"><i></i></div>
-         <div class="ultlabel"><span>${u.name}<br>必殺技！</span></div>`,
+        `<div class="face" style="--c:${elem.color}"><span>${u.name.slice(0, 1)}</span><em>${elem.name}</em></div>
+         <div class="pinfo"><div class="pname">${u.name}</div>
+         <div class="bar hp"><b></b><i></i></div><div class="hpnum"></div></div>
+         <div class="ultlabel">必殺技</div>`,
       );
       card.title = `${c.ult.name}：${c.ult.desc}`;
       card.addEventListener('click', () => this.h.onUlt(u.uid));
@@ -152,7 +162,7 @@ export class Hud {
     const pct = `${Math.max(0, (hp / max) * 100)}%`;
     if (card) {
       (card.querySelector('.bar.hp > i') as HTMLElement).style.width = pct;
-      (card.querySelector('.hpnum') as HTMLElement).textContent = `HP ${hp} / ${max}`;
+      (card.querySelector('.hpnum') as HTMLElement).textContent = `HP ${hp}`;
     }
     if (tag) (tag.querySelector('.bar.hp > i') as HTMLElement).style.width = pct;
   }
@@ -164,7 +174,8 @@ export class Hud {
 
   setEnergy(uid: string, value: number, max: number): void {
     const card = this.cards.get(uid);
-    if (card) (card.querySelector('.bar.en > i') as HTMLElement).style.width = `${(value / max) * 100}%`;
+    // 顔のまわりの輪が、必殺技ゲージ
+    if (card) (card.querySelector('.face') as HTMLElement).style.setProperty('--e', `${Math.min(100, (value / max) * 100)}%`);
   }
 
   setUlt(uid: string, ready: boolean, queued: boolean): void {
@@ -297,6 +308,32 @@ export class Hud {
 
   banner(text: string, cls = ''): void {
     this.spawn(el('div', `banner ${cls}`, text), 2.4);
+  }
+
+  /** 総ダメージ（敵に与えた分）を積み上げる */
+  addTotal(n: number): void {
+    this.total += n;
+    const tn = this.totalBox.querySelector('.tn') as HTMLElement;
+    tn.textContent = this.total.toLocaleString('ja-JP');
+    tn.classList.remove('bump');
+    void tn.offsetWidth;
+    tn.classList.add('bump');
+  }
+  resetTotal(): void {
+    this.total = 0;
+    (this.totalBox.querySelector('.tn') as HTMLElement).textContent = '0';
+  }
+  get totalDamage(): number {
+    return this.total;
+  }
+
+  /** 必殺技：画面いっぱいの切り替え（1枚絵ができるまでは、頭文字の仮の絵） */
+  ultSplash(who: string, what: string, color: string): void {
+    const s = el('div', 'ultsplash', `<div class="stripes"></div><div class="portrait">${who.slice(0, 1)}</div><div class="words"><div class="who">${who}</div><div class="what">${what}</div></div>`);
+    s.style.setProperty('--c', color);
+    // ボタンや名札より上に出す
+    this.root.appendChild(s);
+    window.setTimeout(() => s.remove(), 1600 / Math.max(1, Number(this.root.style.getPropertyValue('--spd')) || 1));
   }
 
   cutin(who: string, what: string, color: string): void {
