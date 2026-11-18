@@ -173,6 +173,23 @@ describe('相性', () => {
     const dot = of(ev, 'damage').find((d) => d.dot === 'burn');
     expect(dot).toBeTruthy();
   });
+
+  it('倍にした燃焼は、あとの燃焼で減らない。上限なら相性にならない', () => {
+    const b = make(one('robot'));
+    const robot = b.enemies[0];
+    robot.stats.hp = robot.maxHp = robot.hp = 99999;
+    const akari = ally(b, 'akari');
+    b.addStatus(akari, robot, 'burn', 3, 5);
+    giveTurn(b, ally(b, 'hayate'));
+    b.command('skill');
+    expect(b.hasStatus(robot, 'burn')?.stacks).toBe(10);
+    giveTurn(b, akari);
+    b.command('basic'); // 燃焼を足す
+    expect(b.hasStatus(robot, 'burn')?.stacks).toBe(10);
+    giveTurn(b, ally(b, 'hayate'));
+    const ev = b.command('skill');
+    expect(of(ev, 'amplify')).toHaveLength(0);
+  });
 });
 
 describe('敵の動き', () => {

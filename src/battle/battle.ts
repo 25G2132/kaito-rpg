@@ -575,6 +575,7 @@ export class Battle {
         const from = s.stacks;
         s.stacks = Math.min(Math.round(from * eff.factor), (def?.maxStacks ?? 1) * eff.factor);
         const source = this.unit(s.source);
+        if (s.stacks <= from) break; // もう上限なら何も起きない
         const synergyFrom = source && source.uid !== actor.uid && source.side === actor.side ? source.uid : undefined;
         this.emit({ t: 'amplify', source: actor.uid, target: u.uid, status: eff.status, from, to: s.stacks, synergyFrom });
         break;
@@ -624,7 +625,8 @@ export class Battle {
     const fresh = this.activeId === u.uid;
     const s = this.hasStatus(u, id);
     if (s) {
-      s.stacks = Math.min(def.maxStacks ?? 1, s.stacks + stacks);
+      // 倍にした重なりは、あとから足しても減らさない
+      s.stacks = Math.max(s.stacks, Math.min(def.maxStacks ?? 1, s.stacks + stacks));
       s.turns = Math.max(s.turns, turns);
       s.power = Math.max(s.power, power);
       s.source = source.uid;
