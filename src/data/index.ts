@@ -13,6 +13,7 @@ export const ENCOUNTERS: Record<string, EncounterDef> = {
     name: '夜の見回り',
     desc: '参考書・部品・装備が出る',
     kind: 'farm',
+    recommend: 4000,
     level: 14,
     waves: [
       ['drone', 'guard', 'drone'],
@@ -25,6 +26,7 @@ export const ENCOUNTERS: Record<string, EncounterDef> = {
     name: '資料室の警備',
     desc: '技の手帳・鍵の欠片・設計図が出る',
     kind: 'farm',
+    recommend: 4500,
     level: 16,
     waves: [
       ['guard', 'drone', 'guard'],
@@ -37,6 +39,7 @@ export const ENCOUNTERS: Record<string, EncounterDef> = {
     name: '金庫室の番人',
     desc: '第1章のボス。群れ2つのあとに「番人クロガネ」',
     kind: 'boss',
+    recommend: 11000,
     // 育てずに挑むとまず負け、材料の戦いを8回ほどして育てると勝てる強さ（自動テストで確かめる）
     level: 35,
     waves: [

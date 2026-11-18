@@ -92,7 +92,7 @@ export class BattleController {
     this.wake();
   }
   toggleSpeed(): void {
-    this.speed = this.speed === 1 ? 2 : 1;
+    this.speed = this.speed >= 3 ? 1 : this.speed + 1; // ×1 → ×2 → ×3
     this.clock.speed = this.speed;
     this.hud.setSpeed(this.speed);
   }

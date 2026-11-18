@@ -143,6 +143,7 @@ export interface EncounterDef {
   level: number; // 敵のレベル
   waves: string[][]; // 敵の id の並び（群れごと）
   kind?: 'farm' | 'boss';
+  recommend?: number; // おすすめの戦力
   rewards?: RewardDef;
   firstClear?: RewardDef; // はじめて勝ったときに、さらにもらえる
 }

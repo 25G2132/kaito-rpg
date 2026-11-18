@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { VRM } from '@pixiv/three-vrm';
 import type { Battle, Unit } from '../battle/battle';
+import type { CharacterDef } from '../battle/types';
 import { ActorView } from './actor';
 import { easeInOut, easeOut, type GameClock } from './clock';
 
@@ -84,24 +85,37 @@ export class Stage {
 
   /** 味方を並べる（VRM があれば差しかえる） */
   setAllies(b: Battle, vrms: VRM[] | null): void {
-    b.allies.forEach((u, i) => {
-      const c = b.charDef(u)!;
+    this.showParty(b.allies.map((u) => b.charDef(u)!), vrms);
+  }
+
+  /** 味方だけを並べる（戦いの外でも使う）。前の味方は片づける */
+  showParty(defs: CharacterDef[], vrms: VRM[] | null): void {
+    this.removeWhere((uid) => uid.startsWith('p'));
+    defs.forEach((c, i) => {
       const a = new ActorView(c.look, 1);
       const [x, z] = PARTY_POS[i % PARTY_POS.length];
       a.root.position.set(x, 0, z);
       if (vrms?.[i]) a.setVrm(vrms[i]);
-      this.add(u.uid, a);
+      this.add(`p${i}`, a);
     });
+  }
+
+  clearEnemies(): void {
+    this.removeWhere((uid) => uid.startsWith('e'));
+  }
+
+  private removeWhere(test: (uid: string) => boolean): void {
+    for (const [uid, a] of [...this.actors]) {
+      if (!test(uid)) continue;
+      a.setVrm(undefined); // VRM は次の戦いで使い回すので、はずすだけ
+      this.scene.remove(a.root);
+      this.actors.delete(uid);
+    }
   }
 
   /** 敵の群れを並べなおす */
   setEnemies(b: Battle, appear: boolean): void {
-    for (const [uid, a] of [...this.actors]) {
-      if (uid.startsWith('e')) {
-        this.scene.remove(a.root);
-        this.actors.delete(uid);
-      }
-    }
+    this.clearEnemies();
     b.enemies.forEach((u, i) => {
       const d = b.enemyDef(u)!;
       const a = new ActorView(d.look, -1);

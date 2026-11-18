@@ -67,9 +67,22 @@ export class Hud {
     this.root.style.setProperty('--spd', String(speed));
   }
 
+  /** 戦いの外では、戦いの表示を片づける */
+  clearBattle(): void {
+    this.party.innerHTML = '';
+    this.cards.clear();
+    for (const t of this.tags.values()) t.remove();
+    this.tags.clear();
+    this.turnbar.innerHTML = '';
+    this.wave.textContent = '';
+    this.actions.classList.add('hidden');
+    this.root.classList.add('idle');
+  }
+
   // ---------- 作る ----------
 
   build(b: Battle): void {
+    this.root.classList.remove('idle');
     this.party.innerHTML = '';
     this.cards.clear();
     for (const u of b.allies) {

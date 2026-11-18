@@ -589,7 +589,7 @@
   flex-wrap: wrap;
 }
 .choice {
-  flex: 1 1 200px;
+  flex: 1 1 150px;
   min-height: 64px;
   padding: 8px 12px;
   border-radius: 12px;
@@ -671,4 +671,9 @@
 /* 重さの表示（開発中・?perf）と重ならないように下げる */
 body:has(#perf) .turnbar {
   top: 66px;
+}
+
+/* 戦いの外では、右上のボタンも隠す */
+#hud.idle .topright {
+  display: none;
 }
