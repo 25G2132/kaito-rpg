@@ -129,12 +129,22 @@ export interface EnemyDef {
   look: LookDef;
 }
 
+/** 勝ったときにもらえるもの。items は [少ないとき, 多いとき] */
+export interface RewardDef {
+  exp: number; // 出た4人それぞれに
+  items: Record<string, [number, number]>;
+  gear: number; // 装備の数
+}
+
 export interface EncounterDef {
   id: string;
   name: string;
   desc: string;
   level: number; // 敵のレベル
   waves: string[][]; // 敵の id の並び（群れごと）
+  kind?: 'farm' | 'boss';
+  rewards?: RewardDef;
+  firstClear?: RewardDef; // はじめて勝ったときに、さらにもらえる
 }
 
 export interface GameData {
@@ -145,9 +155,20 @@ export interface GameData {
   encounters: Record<string, EncounterDef>;
 }
 
-/** 戦いに出る味方1人。bonus は段階3の装備・武器で足す数字 */
+/** 武器などでつく、数字以外の強さ（0.2 なら +20%） */
+export interface Mods {
+  dmgPct?: number; // 与えるダメージ
+  synergyPct?: number; // 相性の倍率をさらに強める
+  healPct?: number; // 回復・バリアの量
+  energyPct?: number; // 必殺技ゲージのたまりやすさ
+  startEnergyPct?: number; // はじめのゲージ
+}
+
+/** 戦いに出る味方1人。bonus・mods・skillLevel は育成（段階3）で決まる */
 export interface PartyMember {
   id: string;
   level: number;
+  skillLevel?: number; // 技レベル（1から。1つ上がるごとに技の倍率 +10%）
   bonus?: Partial<Stats>;
+  mods?: Mods;
 }

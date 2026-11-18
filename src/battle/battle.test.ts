@@ -265,11 +265,11 @@ describe('群れと勝ち負け', () => {
     expect(b.phase).toBe('lost');
   });
 
-  it('仮の4人（レベル20）で、群れとボスにほぼ必ず勝てる', () => {
+  it('仮の4人（レベル20）で、同じレベルの群れとボスにほぼ必ず勝てる', () => {
     let wins = 0;
     const N = 30;
     for (let seed = 1; seed <= N; seed++) {
-      const b = new Battle(GAME_DATA, { party: party(), encounter: 'vault', seed });
+      const b = new Battle(GAME_DATA, { party: party(), encounter: { ...GAME_DATA.encounters.vault, level: 20 }, seed });
       if (runAuto(b) === 'won') wins++;
     }
     expect(wins / N).toBeGreaterThanOrEqual(0.9);
@@ -277,7 +277,7 @@ describe('群れと勝ち負け', () => {
 
   it('練習の群れには必ず勝てる', () => {
     for (let seed = 1; seed <= 10; seed++) {
-      const b = new Battle(GAME_DATA, { party: party(), encounter: 'patrol', seed });
+      const b = new Battle(GAME_DATA, { party: party(), encounter: { ...GAME_DATA.encounters.patrol, level: 20 }, seed });
       expect(runAuto(b)).toBe('won');
     }
   });
@@ -285,7 +285,7 @@ describe('群れと勝ち負け', () => {
   it('育てていない（レベル1）と、ボスにはまず勝てない', () => {
     let wins = 0;
     for (let seed = 1; seed <= 10; seed++) {
-      const b = new Battle(GAME_DATA, { party: party(1), encounter: 'vault', seed });
+      const b = new Battle(GAME_DATA, { party: party(1), encounter: { ...GAME_DATA.encounters.vault, level: 20 }, seed });
       if (runAuto(b) === 'won') wins++;
     }
     expect(wins).toBe(0);

@@ -15,6 +15,7 @@ import type {
   EnemyDef,
   EncounterDef,
   GameData,
+  Mods,
   PartyMember,
   Side,
   SkillDef,
@@ -31,6 +32,7 @@ const NOT_WEAK_MULT = 0.8; // 弱点でない属性は2割減
 const BROKEN_TAKEN = 0.2; // 守りが崩れている間は2割増し
 const BREAK_DELAY = 0.25; // 崩れたら番が 1/4 遅れる
 const BREAK_DMG = 1.0; // 崩したときの追加ダメージ（攻撃力の倍率）
+export const SKILL_STEP = 0.1; // 技レベル1つで技の倍率 +10%
 
 export interface StatusInst {
   id: string;
@@ -66,6 +68,8 @@ export interface Unit {
   aggro: number;
   actions: number; // 実際に動いた回数（敵の技の順番に使う）
   enraged: boolean;
+  power: number; // 技の倍率（技レベルで上がる）
+  mods: Mods;
 }
 
 export type Phase = 'between' | 'command' | 'won' | 'lost';
@@ -182,7 +186,7 @@ export class Battle {
       def: u.stats.def * Math.max(0, 1 + def),
       spd: u.stats.spd * Math.max(0.2, 1 + spd),
       dmgTaken: 1 + taken + (u.broken ? BROKEN_TAKEN : 0),
-      dmgDealt: 1 + dealt,
+      dmgDealt: 1 + dealt + (u.mods.dmgPct ?? 0),
     };
   }
   isWeak(target: Unit, element: string): boolean {
@@ -330,7 +334,7 @@ export class Battle {
       maxHp: stats.hp,
       hp: stats.hp,
       alive: true,
-      energy: Math.round(c.energyMax * 0.5), // 半分たまった状態で始める
+      energy: Math.round(c.energyMax * Math.min(1, 0.5 + (m.mods?.startEnergyPct ?? 0))), // 半分たまった状態で始める
       energyMax: c.energyMax,
       maxToughness: 0,
       toughness: 0,
@@ -343,6 +347,8 @@ export class Battle {
       aggro: c.aggro ?? 100,
       actions: 0,
       enraged: false,
+      power: 1 + SKILL_STEP * (Math.max(1, m.skillLevel ?? 1) - 1),
+      mods: m.mods ?? {},
     };
   }
 
@@ -378,6 +384,8 @@ export class Battle {
         aggro: 100,
         actions: 0,
         enraged: false,
+        power: 1,
+        mods: {},
       };
     });
     this.emit({ t: 'wave', index, total: this.encounter.waves.length, enemies: this.enemies.map((u) => u.uid) });
@@ -587,14 +595,15 @@ export class Battle {
         break;
       }
       case 'heal': {
-        const amount = Math.round((eff.casterPct ?? 0) * actor.maxHp + (eff.targetPct ?? 0) * u.maxHp);
+        const boost = actor.power * (1 + (actor.mods.healPct ?? 0));
+        const amount = Math.round(((eff.casterPct ?? 0) * actor.maxHp + (eff.targetPct ?? 0) * u.maxHp) * boost);
         const before = u.hp;
         u.hp = Math.min(u.maxHp, u.hp + amount);
         this.emit({ t: 'heal', source: actor.uid, target: u.uid, amount: u.hp - before, hp: u.hp });
         break;
       }
       case 'shield': {
-        const amount = Math.round(eff.casterPct * actor.maxHp);
+        const amount = Math.round(eff.casterPct * actor.maxHp * actor.power * (1 + (actor.mods.healPct ?? 0)));
         u.shield = Math.max(u.shield, amount);
         u.shieldTurns = Math.max(u.shieldTurns, eff.turns);
         this.emit({ t: 'shield', target: u.uid, amount: u.shield });
@@ -648,7 +657,7 @@ export class Battle {
 
   private gainEnergy(u: Unit, amount: number): void {
     if (u.side !== 'ally' || amount <= 0) return;
-    const next = Math.min(u.energyMax, u.energy + amount);
+    const next = Math.min(u.energyMax, u.energy + amount * (1 + (u.mods.energyPct ?? 0)));
     if (next !== u.energy) {
       u.energy = next;
       this.emit({ t: 'energy', unit: u.uid, value: next });
@@ -676,13 +685,13 @@ export class Battle {
     if (synergy) {
       const s = this.hasStatus(target, synergy.status);
       if (s) {
-        synMult = synergy.mult;
-        syn = { status: synergy.status, mult: synergy.mult, from: s.source };
+        synMult = synergy.mult * (1 + (actor.mods.synergyPct ?? 0));
+        syn = { status: synergy.status, mult: Math.round(synMult * 100) / 100, from: s.source };
       }
     }
     const amount = Math.max(
       1,
-      Math.round(a.atk * mult * a.dmgDealt * d.dmgTaken * resist * defMult * (crit ? 1 + actor.stats.critDmg : 1) * synMult),
+      Math.round(a.atk * mult * actor.power * a.dmgDealt * d.dmgTaken * resist * defMult * (crit ? 1 + actor.stats.critDmg : 1) * synMult),
     );
     this.applyDamage(actor, target, amount, { crit, weak, synergy: syn });
 
