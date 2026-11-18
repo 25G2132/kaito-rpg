@@ -93,42 +93,59 @@ export async function start(): Promise<void> {
   status.textContent = `読み込み中… models/${modelName}.vrm`;
 
   // ---- キャラの読み込み（同じファイルを4回組み立てる＝4人分のメモリを使う）----
-  const loadStart = performance.now();
+  // 開発サーバーでは models/ から読む。公開ページにはモデルを置かないので、
+  // 「VRMを選ぶ」でスマホの中のファイルを選んで読む（ファイルはどこにも送らない）。
   let vrms: VRM[] = [];
-  let fileBytes = 0;
-  try {
-    const res = await fetch(`models/${modelName}.vrm`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const buf = await res.arrayBuffer();
-    fileBytes = buf.byteLength;
-    const loader = new GLTFLoader();
-    loader.register((parser) => new VRMLoaderPlugin(parser));
-    for (let i = 0; i < PARTY_POS.length; i++) {
-      const gltf = await loader.parseAsync(buf.slice(0), '');
-      const vrm = gltf.userData.vrm as VRM;
-      VRMUtils.removeUnnecessaryVertices(vrm.scene);
-      VRMUtils.combineSkeletons(vrm.scene);
-      VRMUtils.combineMorphs(vrm);
-      vrm.scene.traverse((o) => {
-        o.frustumCulled = false;
-        if ((o as THREE.Mesh).isMesh) o.castShadow = true;
-      });
-      const [x, z] = PARTY_POS[i];
-      vrm.scene.position.set(x, 0, z);
-      vrm.scene.rotation.y = Math.PI / 2; // 右（敵の方）を向く
-      lowerArms(vrm);
-      scene.add(vrm.scene);
-      vrms.push(vrm);
-      status.textContent = `読み込み中… ${i + 1}/${PARTY_POS.length}`;
-    }
-  } catch (e) {
-    status.textContent = `読み込めませんでした：models/${modelName}.vrm（${String(e)}）`;
+  let loadInfo = '';
+  const loader = new GLTFLoader();
+  loader.register((parser) => new VRMLoaderPlugin(parser));
+
+  async function loadFrom(getBuffer: () => Promise<ArrayBuffer>, label: string): Promise<void> {
+    vrms.forEach((v) => {
+      scene.remove(v.scene);
+      VRMUtils.deepDispose(v.scene);
+    });
     vrms = [];
+    status.textContent = `読み込み中… ${label}`;
+    const loadStart = performance.now();
+    try {
+      const buf = await getBuffer();
+      for (let i = 0; i < PARTY_POS.length; i++) {
+        const gltf = await loader.parseAsync(buf.slice(0), '');
+        const vrm = gltf.userData.vrm as VRM;
+        VRMUtils.removeUnnecessaryVertices(vrm.scene);
+        VRMUtils.combineSkeletons(vrm.scene);
+        VRMUtils.combineMorphs(vrm);
+        vrm.scene.traverse((o) => {
+          o.frustumCulled = false;
+          if ((o as THREE.Mesh).isMesh) o.castShadow = true;
+        });
+        const [x, z] = PARTY_POS[i];
+        vrm.scene.position.set(x, 0, z);
+        vrm.scene.rotation.y = Math.PI / 2; // 右（敵の方）を向く
+        lowerArms(vrm);
+        scene.add(vrm.scene);
+        vrms.push(vrm);
+        status.textContent = `読み込み中… ${i + 1}/${PARTY_POS.length}`;
+      }
+      const sec = (performance.now() - loadStart) / 1000;
+      loadInfo = `${label} ${(buf.byteLength / 1048576).toFixed(1)}MB  読み込み ${sec.toFixed(1)}秒`;
+    } catch (e) {
+      loadInfo = `読み込めませんでした：${label}（${String(e)}）
+右下の「VRMを選ぶ」でファイルを選んでください`;
+    }
+    apply();
   }
-  const loadSec = (performance.now() - loadStart) / 1000;
-  const loadInfo = vrms.length
-    ? `${modelName}.vrm ${(fileBytes / 1048576).toFixed(1)}MB  読み込み ${loadSec.toFixed(1)}秒`
-    : status.textContent;
+
+  const picker = document.createElement('input');
+  picker.type = 'file'; // accept は付けない（Android で .vrm が選べなくなることがある）
+  picker.hidden = true;
+  document.body.appendChild(picker);
+  picker.addEventListener('change', () => {
+    const file = picker.files?.[0];
+    if (file) void loadFrom(() => file.arrayBuffer(), file.name);
+    picker.value = '';
+  });
 
   // ---- 切り替えボタン ----
   const apply = () => {
@@ -148,6 +165,7 @@ export async function start(): Promise<void> {
     ['影', () => { settings.shadows = !settings.shadows; apply(); }],
     ['細かさ', () => { settings.pixelRatio = nextOf([1, 1.5, 2, 3], settings.pixelRatio); apply(); }],
     ['揺れ', () => { settings.springs = !settings.springs; apply(); }],
+    ['VRMを選ぶ', () => picker.click()],
   ]);
 
   function resize(): void {
@@ -163,7 +181,11 @@ export async function start(): Promise<void> {
   watchOrientation((portrait) => (paused = portrait));
   document.addEventListener('visibilitychange', () => (paused = document.hidden));
 
-  apply();
+  await loadFrom(async () => {
+    const res = await fetch(`models/${modelName}.vrm`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.arrayBuffer();
+  }, `models/${modelName}.vrm`);
 
   const clock = new THREE.Clock();
   let t = 0;
