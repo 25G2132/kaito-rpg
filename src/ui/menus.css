@@ -331,3 +331,40 @@
   pointer-events: none;
   animation: fade 1.6s ease-out forwards;
 }
+
+/* ---- 材料の戦いの段階（I〜III） ---- */
+.tiers {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+  font-size: 11px;
+  flex-wrap: wrap;
+}
+.tierbtn {
+  min-width: 48px;
+  height: 40px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 14px;
+  font-weight: 900;
+}
+.tierbtn.on {
+  background: #d4486a;
+  border-color: #ff9ab0;
+}
+.tierbtn:disabled {
+  opacity: 0.35;
+}
+.tierbtn small {
+  font-size: 10px;
+  margin-left: 2px;
+}
+.gear.r4 {
+  border-color: rgba(197, 139, 255, 0.6);
+}
+.gear.r5 {
+  border-color: rgba(255, 201, 61, 0.8);
+  background: rgba(255, 201, 61, 0.08);
+}

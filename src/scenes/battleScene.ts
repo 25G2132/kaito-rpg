@@ -14,9 +14,10 @@ import { GameClock } from '../battleView/clock';
 import { Hud } from '../battleView/hud';
 import { Stage } from '../battleView/stage';
 import { PerfHud } from '../dev/perfHud';
-import { applyRewards, autoInvest, partyFor, partyPower, recordLoss, rollRewards, type Reward } from '../progress/growth';
+import { applyRewards, autoInvest, isUnlocked, partyFor, partyPower, recordLoss, rollRewards, type Reward } from '../progress/growth';
 import { defaultSave, loadSave, storeSave } from '../progress/save';
-import { esc, matsHtml } from '../ui/fmt';
+import { ITEMS } from '../data/items';
+import { esc, matsHtml, oddsText, slotName, stars } from '../ui/fmt';
 import { GrowthView } from '../ui/growthView';
 import { watchOrientation } from '../ui/orientation';
 
@@ -145,20 +146,7 @@ export function start(): void {
     stage.clearEnemies();
     stage.showParty(save.party.map((id) => CHARACTERS[id]), vrms);
     const power = partyPower(save);
-    const encs = Object.values(GAME_DATA.encounters)
-      .map((e) => {
-        const wins = save.wins[e.id] ?? 0;
-        const losses = save.losses[e.id] ?? 0;
-        const tag = wins ? `<span class="tag won">勝った ${wins}回</span>` : losses ? `<span class="tag lost">負けた ${losses}回</span>` : '';
-        const rec = e.recommend ? `おすすめ戦力 ${e.recommend}` : '';
-        const canSkip = e.kind === 'farm' && wins > 0;
-        return `<div class="enc${e.kind === 'boss' ? ' boss' : ''}">
-          <div class="grow"><div class="ename2">${esc(e.name)}${tag}</div><div class="edesc">${esc(e.desc)}<br>${rec}</div></div>
-          ${canSkip ? `<button class="btn" data-skip="${e.id}">すぐ終わらせる<small>自動で一瞬</small></button>` : ''}
-          <button class="btn main" data-fight="${e.id}">戦う</button>
-        </div>`;
-      })
-      .join('');
+    const encs = encounterCards();
     const lostBoss = (save.losses.vault ?? 0) > 0 && !(save.wins.vault > 0);
     const notice = note
       ? `<div class="hub-notice">${esc(note)}</div>`
@@ -185,7 +173,10 @@ export function start(): void {
       const t = (ev.target as HTMLElement).closest('button') as HTMLButtonElement | null;
       if (!t) return;
       if (t.dataset.fight) void runBattle(t.dataset.fight);
-      else if (t.dataset.skip) skipBattle(t.dataset.skip);
+      else if (t.dataset.tier) {
+        selTier[t.dataset.group!] = Number(t.dataset.tier);
+        showHub(note);
+      }
       else if (t.dataset.act === 'grow') openGrowth();
       else if (t.dataset.act === 'vrm') picker.click();
       else if (t.dataset.act === 'reset') {
@@ -197,6 +188,42 @@ export function start(): void {
       }
     });
     document.body.appendChild(hubEl);
+  }
+
+  /** 選んでいる段階（材料の戦いごと）。はじめは挑める一番上 */
+  const selTier: Record<string, number> = {};
+
+  function encounterCards(): string {
+    const all = Object.values(GAME_DATA.encounters);
+    const groups = [...new Set(all.filter((e) => e.group).map((e) => e.group!))];
+    const card = (e: EncounterDef, tierBtns = '') => {
+      const wins = save.wins[e.id] ?? 0;
+      const losses = save.losses[e.id] ?? 0;
+      const tag = wins ? `<span class="tag won">勝った ${wins}回</span>` : losses ? `<span class="tag lost">負けた ${losses}回</span>` : '';
+      const odds = e.gearOdds ? oddsText(e.gearOdds) : '';
+      return `<div class="enc${e.kind === 'boss' ? ' boss' : ''}">
+          <div class="grow"><div class="ename2">${esc(e.name)}${tag}</div>
+            <div class="edesc">${esc(e.desc)}　おすすめ戦力 ${e.recommend ?? '-'}${odds ? `<br>装備：${odds}` : ''}</div>
+            ${tierBtns}</div>
+          <button class="btn main" data-fight="${e.id}">戦う</button>
+        </div>`;
+    };
+    const farms = groups.map((g) => {
+      const tiers = all.filter((e) => e.group === g).sort((a, b) => (a.tier ?? 0) - (b.tier ?? 0));
+      const open = tiers.filter((e) => isUnlocked(save, e));
+      const cur = Math.min(selTier[g] ?? open[open.length - 1].tier!, open[open.length - 1].tier!);
+      const btns = tiers
+        .map((e) => {
+          const ok = isUnlocked(save, e);
+          return `<button class="tierbtn${e.tier === cur ? ' on' : ''}" data-group="${g}" data-tier="${e.tier}" ${ok ? '' : 'disabled'}>${['I', 'II', 'III', 'IV'][e.tier! - 1]}${ok ? '' : '<small>🔒</small>'}</button>`;
+        })
+        .join('');
+      const locked = tiers.find((e) => !isUnlocked(save, e));
+      const hint = locked ? `<span class="muted">　${['I', 'II', 'III', 'IV'][locked.tier! - 2]} に勝つと ${['I', 'II', 'III', 'IV'][locked.tier! - 1]} に挑める</span>` : '';
+      return card(tiers.find((e) => e.tier === cur)!, `<div class="tiers">段階 ${btns}${hint}</div>`);
+    });
+    const bosses = all.filter((e) => e.kind === 'boss').map((e) => card(e));
+    return [...farms, ...bosses].join('');
   }
 
   function openGrowth(charId?: string): void {
@@ -220,7 +247,7 @@ export function start(): void {
     finish(enc, res);
   }
 
-  /** 勝ったことのある材料の戦いは、自動で一瞬で終わらせられる */
+  /** 開発サーバーの確かめ用だけ：自動で一瞬で終わらせる（画面のボタンはない） */
   function skipBattle(encId: string): void {
     const enc = GAME_DATA.encounters[encId];
     const b = new Battle(GAME_DATA, { party: partyFor(save), encounter: encId, seed: Date.now() });
@@ -249,10 +276,27 @@ export function start(): void {
     const stats = skipped
       ? `自動で一瞬で終わらせた（番の数 ${res.turns}）`
       : `かかった時間 ${mmss}　総ダメージ ${res.totalDamage.toLocaleString('ja-JP')}　いちばん大きな数字 ${res.biggest}　相性 ${res.synergies}回`;
+    // ごほうびは1つずつ出す。いい物ほどあとに、光らせて出す
+    const STEP = 0.32;
+    const entries: string[] = [];
+    let best = 0;
+    if (reward) {
+      entries.push(`<span class="rw">経験値 +${reward.exp}<small>4人それぞれ</small></span>`);
+      for (const [k, n] of Object.entries(reward.items)) {
+        const d = ITEMS[k];
+        entries.push(`<span class="rw"><i style="background:${d.color}"></i>${d.name} ×${n}</span>`);
+      }
+      for (const g of [...reward.gear].sort((a, b) => a.rarity - b.rarity)) {
+        best = Math.max(best, g.rarity);
+        entries.push(`<span class="rw gear r${g.rarity}">${stars(g.rarity)}<small>${slotName(g.slot)}</small></span>`);
+      }
+    }
     const rewardHtml = reward
-      ? `<div class="rewards">${matsHtml(reward.items, true)}${reward.gear.length ? `<span class="mat">装備 ${reward.gear.length}個</span>` : ''}<span class="mat">経験値 +${reward.exp}（4人それぞれ）</span></div>
-         ${ups ? `<p style="text-align:center" class="gain">レベルアップ！ ${ups}</p>` : ''}`
+      ? `<div class="rewards">${entries.map((x, i) => x.replace('class="rw', `style="animation-delay:${(i * STEP).toFixed(2)}s" class="rw`)).join('')}</div>
+         ${ups ? `<p class="levelup" style="animation-delay:${(entries.length * STEP).toFixed(2)}s">レベルアップ！ ${ups}</p>` : ''}`
       : '';
+    // ★5 が出たら、出た瞬間に画面を光らせる
+    if (best >= 5) window.setTimeout(() => hud.flash(false), (entries.length - 1) * STEP * 1000);
     const advice =
       !won && enc.kind === 'boss'
         ? `<p style="text-align:center">チーム戦力 ${partyPower(save)} / おすすめ ${enc.recommend}。材料の戦いで集めて「育てる」で強くしよう。</p>`

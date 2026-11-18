@@ -1,4 +1,4 @@
-import { PCT_STATS, STAT_NAMES, type StatKey } from '../data/gear';
+import { PCT_STATS, RARITIES, SLOTS, STAT_NAMES, type StatKey } from '../data/gear';
 import { ITEMS } from '../data/items';
 
 // 画面に出す数字の書き方をそろえる。
@@ -28,3 +28,19 @@ export function toast(text: string): void {
 }
 
 export const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+
+/** 装備の★の出かた（例 ★2 60%・★3 35%・★4 5%） */
+export function oddsText(odds: Record<number, number>): string {
+  const total = Object.values(odds).reduce((a, b) => a + b, 0);
+  return Object.entries(odds)
+    .map(([r, w]) => `<span style="color:${RARITIES[Number(r)].color}">★${r} ${Math.round((w / total) * 100)}%</span>`)
+    .join('・');
+}
+
+export function stars(r: number): string {
+  return `<span style="color:${RARITIES[r].color}">${'★'.repeat(r)}</span>`;
+}
+
+export function slotName(id: string): string {
+  return SLOTS.find((s) => s.id === id)?.name ?? id;
+}

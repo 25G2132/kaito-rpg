@@ -2,10 +2,10 @@ import type { Rng } from '../battle/rng';
 import type { Stats } from '../battle/types';
 import { CHARACTERS } from '../data/characters';
 import { ELEMENTS } from '../data/elements';
-import { enhanceCost, GEAR_MAX_LEVEL, SLOTS, type SlotId, type StatKey } from '../data/gear';
+import { enhanceCost, SLOTS, type SlotId, type StatKey } from '../data/gear';
 import { WEAPONS } from '../data/weapons';
 import { SKILL_STEP } from '../battle/battle';
-import { enhanceGear, equipGear, gearMainValue, gearScore } from '../progress/gear';
+import { enhanceGear, equipGear, gearMainValue, gearScore, maxGearLevel } from '../progress/gear';
 import {
   ascend,
   booksFor,
@@ -21,7 +21,7 @@ import {
   useBooks,
 } from '../progress/growth';
 import type { GearPiece, SaveData } from '../progress/save';
-import { esc, fmtStat, matsHtml, toast } from './fmt';
+import { esc, fmtStat, matsHtml, stars, toast } from './fmt';
 
 // 育成の画面。どのボタンにも「押すと何がどれだけ上がるか」を数字で出す。
 
@@ -267,22 +267,22 @@ export class GrowthView {
       return `<button class="gear${sl.id === this.slot ? ' sel' : ''}" data-a="${this.act(() => {
         this.slot = sl.id;
         this.render();
-      })}"><div class="gname">${sl.name}${g ? ` +${g.level}` : ''}</div>${g ? gearLines(g) : '<span class="muted">なし（タップで選ぶ）</span>'}</button>`;
+      })}"><div class="gname">${sl.name}${g ? ` ${stars(g.rarity)} +${g.level}` : ''}</div>${g ? gearLines(g) : '<span class="muted">なし（タップで選ぶ）</span>'}</button>`;
     }).join('');
 
     const cur = worn(this.slot);
     let detail = '';
     if (cur) {
       const cost = enhanceCost(cur.level);
-      const max = cur.level >= GEAR_MAX_LEVEL;
+      const max = cur.level >= maxGearLevel(cur);
       const ok = !max && (s.items.parts ?? 0) >= cost;
       const enh = this.act(() => {
         const r = enhanceGear(s, cur.id, this.rng);
         if (r.ok) this.changed(r.newSub ? `+${cur.level}！ 副ステータス「${statName(r.newSub)}」が増えた` : r.grew ? `+${cur.level}！ 「${statName(r.grew)}」が伸びた` : `+${cur.level}！`);
       });
       const next = 3 - (cur.level % 3);
-      detail = `<div class="card row"><div class="grow"><b>${slotName(cur.slot)} +${cur.level}</b> を強化（部品 ${cost}）<br>
-        ${max ? '<span class="why">これ以上強くできない</span>' : ok ? `${this.gainEnhanceMain(cur)}　<span class="muted">あと${next}回で副ステータスが増える／伸びる</span>` : `<span class="why">部品が${cost}個いる（いま${s.items.parts ?? 0}）</span>`}</div>
+      detail = `<div class="card row"><div class="grow"><b>${slotName(cur.slot)} ${stars(cur.rarity)} +${cur.level} / ${maxGearLevel(cur)}</b> を強化（部品 ${cost}）<br>
+        ${max ? '<span class="why">この★ではここまで（★が高いほど上まで強くできる）</span>' : ok ? `${this.gainEnhanceMain(cur)}　<span class="muted">あと${next}回で副ステータスが増える／伸びる</span>` : `<span class="why">部品が${cost}個いる（いま${s.items.parts ?? 0}）</span>`}</div>
         <button class="btn main" data-a="${enh}" ${ok ? '' : 'disabled'}>強化</button></div>`;
     }
     const others = s.gear
@@ -291,7 +291,7 @@ export class GrowthView {
       .slice(0, 12)
       .map((g) => {
         const holder = g.owner ? CHARACTERS[g.owner]?.name : '';
-        return `<div class="gear"><div class="gname">${slotName(g.slot)} +${g.level}${holder ? ` <span class="why">${holder}が使用中</span>` : ''}</div>${gearLines(g)}
+        return `<div class="gear r${g.rarity}"><div class="gname">${slotName(g.slot)} ${stars(g.rarity)} +${g.level}${holder ? ` <span class="why">${holder}が使用中</span>` : ''}</div>${gearLines(g)}
           <div>${this.gain((x) => equipGear(x, g.id, id))}</div>
           <button class="btn" style="margin-top:4px;width:100%" data-a="${this.act(() => {
             equipGear(s, g.id, id);

@@ -815,3 +815,62 @@ body:has(#perf) .turnbar {
   color: #ffb02e;
   text-shadow: 0 2px 0 #5a2000, 0 0 10px rgba(255, 120, 0, 0.8);
 }
+
+/* ---- 勝ったときのごほうび：1つずつ出す。いい物ほど光る ---- */
+.rw {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  font-size: 13px;
+  font-weight: 800;
+  opacity: 0;
+  animation: pop 0.45s ease-out forwards;
+}
+.rw small {
+  font-size: 10px;
+  opacity: 0.8;
+  margin-left: 2px;
+}
+.rw i {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  transform: rotate(45deg);
+}
+.rw.gear {
+  font-size: 15px;
+}
+.rw.gear.r4 {
+  border-color: #c58bff;
+  box-shadow: 0 0 10px rgba(197, 139, 255, 0.6);
+}
+.rw.gear.r5 {
+  border-color: #ffc93d;
+  background: rgba(255, 201, 61, 0.18);
+  box-shadow: 0 0 18px rgba(255, 201, 61, 0.9);
+  animation: pop5 0.8s ease-out forwards;
+}
+.levelup {
+  text-align: center;
+  color: #78f0a0;
+  font-weight: 900;
+  font-size: 15px;
+  opacity: 0;
+  animation: pop 0.5s ease-out forwards;
+}
+@keyframes pop {
+  0% { opacity: 0; transform: scale(0.4) translateY(8px); }
+  60% { opacity: 1; transform: scale(1.12); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes pop5 {
+  0% { opacity: 0; transform: scale(2.2) rotate(-8deg); }
+  40% { opacity: 1; transform: scale(0.9) rotate(2deg); }
+  60% { transform: scale(1.15); }
+  100% { opacity: 1; transform: scale(1); }
+}
