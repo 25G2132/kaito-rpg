@@ -62,3 +62,39 @@ body {
   white-space: pre;
   pointer-events: none;
 }
+
+/* 段階1の重さの試作だけで使う */
+.spike-status {
+  position: fixed;
+  left: max(6px, env(safe-area-inset-left));
+  bottom: max(6px, env(safe-area-inset-bottom));
+  z-index: 50;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.6);
+  font: 11px/1.4 ui-monospace, Menlo, Consolas, monospace;
+  white-space: pre;
+  pointer-events: none;
+}
+.spike-buttons {
+  position: fixed;
+  right: max(8px, env(safe-area-inset-right));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  z-index: 50;
+  display: flex;
+  gap: 8px;
+}
+.spike-buttons button {
+  min-width: 56px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 10px;
+  background: rgba(20, 24, 38, 0.85);
+  color: #e8e6f0;
+  font: 600 14px system-ui, sans-serif;
+  touch-action: manipulation;
+}
+.spike-buttons button:active {
+  background: rgba(212, 72, 106, 0.9);
+}
