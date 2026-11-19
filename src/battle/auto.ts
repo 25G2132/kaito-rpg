@@ -96,6 +96,15 @@ export function readyUltimates(b: Battle): { uid: string; target?: string }[] {
   return out.sort((a, b2) => a.prio - b2.prio).map(({ uid, target }) => ({ uid, target }));
 }
 
+/** 自動の入れかえ：前で倒れている人を、元気な控えと入れかえる */
+export function autoSwap(b: Battle): { out: string; in: string } | null {
+  if (b.phase !== 'command') return null;
+  const down = b.allies.find((u) => !u.bench && !u.alive);
+  const fresh = b.benchAllies().sort((x, y) => y.hp / y.maxHp - x.hp / x.maxHp)[0];
+  if (!down || !fresh || !b.canSwap(down.uid, fresh.uid)) return null;
+  return { out: down.uid, in: fresh.uid };
+}
+
 /** 最後まで自動で戦う（テストと釣り合いの確かめに使う） */
 export function runAuto(b: Battle, maxTurns = 500): Battle['phase'] {
   while (!b.ended && b.turnCount < maxTurns) {
@@ -106,6 +115,8 @@ export function runAuto(b: Battle, maxTurns = 500): Battle['phase'] {
     if (b.ended) break;
     if (b.phase === 'between') b.nextTurn();
     else if (b.phase === 'command') {
+      const s = autoSwap(b);
+      if (s) b.swap(s.out, s.in);
       const c = chooseCommand(b);
       b.command(c.kind, c.target);
     }

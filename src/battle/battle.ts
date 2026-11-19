@@ -32,7 +32,10 @@ const NOT_WEAK_MULT = 0.8; // 弱点でない属性は2割減
 const BROKEN_TAKEN = 0.2; // 守りが崩れている間は2割増し
 const BREAK_DELAY = 0.25; // 崩れたら番が 1/4 遅れる
 const BREAK_DMG = 1.0; // 崩したときの追加ダメージ（攻撃力の倍率）
-export const SKILL_STEP = 0.1; // 技レベル1つで技の倍率 +10%
+export const SKILL_STEP = 0.1;
+export const ULT_BOOST_MAX = 1.5; // 必殺技のタッチ遊びで、いちばん強くなったとき
+export const PERSUADE_HP = 0.3; // 説得できる HP の割合
+export const FRONT = 4; // 前に出る人数 // 技レベル1つで技の倍率 +10%
 
 export interface StatusInst {
   id: string;
@@ -68,6 +71,7 @@ export interface Unit {
   aggro: number;
   actions: number; // 実際に動いた回数（敵の技の順番に使う）
   enraged: boolean;
+  bench: boolean; // 控え（前の4人のうしろ。動かず、ねらわれない）
   power: number; // 技の倍率（技レベルで上がる）
   mods: Mods;
 }
@@ -104,6 +108,8 @@ export type BattleEvent =
   | { t: 'advance'; unit: string }
   | { t: 'wave'; index: number; total: number; enemies: string[] }
   | { t: 'warn'; unit: string; text: string }
+  | { t: 'swap'; out: string; in: string }
+  | { t: 'persuade'; unit: string; target: string; ok: boolean }
   | { t: 'end'; result: 'won' | 'lost' };
 
 /** 戦いの始まり方。ambush＝こちらが先に叩いた（敵の番が遅れ、守りも少し削れる）、surprised＝見つかってぶつかられた（敵が先に動く） */
@@ -131,6 +137,10 @@ export class Battle {
   activeId: string | null = null;
   turnCount = 0;
   private log: BattleEvent[] = [];
+  private swapped = false;
+  private boost = 1;
+  /** 説得で仲間になった敵（敵の id） */
+  recruited: string[] = [];
   private extras = new Map<string, NonNullable<PartyMember['extraEffects']>>();
 
   constructor(data: GameData, opts: BattleOptions) {
@@ -166,8 +176,17 @@ export class Battle {
   unit(uid: string): Unit | undefined {
     return this.allies.find((u) => u.uid === uid) ?? this.enemies.find((u) => u.uid === uid);
   }
+  /** 前に出ている、倒れていない味方 */
   aliveAllies(): Unit[] {
-    return this.allies.filter((u) => u.alive);
+    return this.allies.filter((u) => u.alive && !u.bench);
+  }
+  /** 控えで、倒れていない味方 */
+  benchAllies(): Unit[] {
+    return this.allies.filter((u) => u.alive && u.bench);
+  }
+  /** 番がまわってくる人（前の味方と敵） */
+  fighters(): Unit[] {
+    return [...this.aliveAllies(), ...this.aliveEnemies()];
   }
   aliveEnemies(): Unit[] {
     return this.enemies.filter((u) => u.alive);
@@ -217,7 +236,7 @@ export class Battle {
   }
   canUlt(uid: string): boolean {
     const u = this.unit(uid);
-    return !!u && u.side === 'ally' && u.alive && !this.ended && u.energy >= u.energyMax;
+    return !!u && u.side === 'ally' && u.alive && !u.bench && !this.ended && u.energy >= u.energyMax;
   }
   skillsOf(u: Unit): { basic: SkillDef; skill: SkillDef; ult: SkillDef } | undefined {
     const c = this.charDef(u);
@@ -231,7 +250,7 @@ export class Battle {
 
   /** これから番が来る順（n人ぶん）。いま番の人がいれば先頭 */
   turnOrder(n: number): string[] {
-    const sim = this.units.filter((u) => u.alive).map((u) => ({ u, av: u.av, len: actionLength(this.current(u).spd) }));
+    const sim = this.fighters().map((u) => ({ u, av: u.av, len: actionLength(this.current(u).spd) }));
     const out: string[] = [];
     if (this.phase === 'command' && this.activeId) {
       out.push(this.activeId);
@@ -255,7 +274,8 @@ export class Battle {
   nextTurn(): BattleEvent[] {
     if (this.phase !== 'between') throw new Error(`nextTurn できない状態: ${this.phase}`);
     this.log = [];
-    const alive = this.units.filter((u) => u.alive);
+    this.swapped = false;
+    const alive = this.fighters();
     const actor = this.pickNext(alive.map((u) => ({ u, av: u.av })));
     const d = actor.av;
     for (const u of alive) u.av = Math.max(0, u.av - d);
@@ -305,14 +325,68 @@ export class Battle {
     return this.flush();
   }
 
-  /** 必殺技。番を待たずに割り込む（いま番の人は変わらない） */
-  ultimate(uid: string, target?: string): BattleEvent[] {
+  /** 必殺技。番を待たずに割り込む（いま番の人は変わらない）。boost はタッチ遊びの出来（1〜1.5） */
+  ultimate(uid: string, target?: string, boost = 1): BattleEvent[] {
     if (!this.canUlt(uid)) throw new Error('必殺技はまだ使えない');
     const actor = this.unit(uid)!;
     this.log = [];
     actor.energy = 0;
     this.emit({ t: 'energy', unit: actor.uid, value: 0 });
+    this.boost = Math.max(1, Math.min(ULT_BOOST_MAX, boost));
     this.perform(actor, this.skillsOf(actor)!.ult, target);
+    this.boost = 1;
+    return this.flush();
+  }
+
+  /** 入れかえできるか（味方の番に1回だけ。前の人と、倒れていない控え） */
+  canSwap(outUid: string, inUid: string): boolean {
+    const o = this.unit(outUid);
+    const i = this.unit(inUid);
+    return this.phase === 'command' && !this.swapped && !!o && !!i && o.side === 'ally' && !o.bench && i.side === 'ally' && i.bench && i.alive;
+  }
+
+  /** 前の味方と控えを入れかえる（番は使わない）。番の人を下げたら、入った人がその番を使う */
+  swap(outUid: string, inUid: string): BattleEvent[] {
+    if (!this.canSwap(outUid, inUid)) throw new Error('入れかえできない');
+    this.log = [];
+    this.swapped = true;
+    this.doSwap(this.unit(outUid)!, this.unit(inUid)!);
+    return this.flush();
+  }
+
+  /** 説得できるか：前の味方の番に、弱った（HP 3割以下）、説得できる敵 */
+  canPersuade(targetUid: string): boolean {
+    const t = this.unit(targetUid);
+    if (this.phase !== 'command' || !t || t.side !== 'enemy' || !t.alive) return false;
+    const def = this.enemyDef(t);
+    return !!def?.recruitChance && t.hp / t.maxHp <= PERSUADE_HP;
+  }
+
+  /** 説得の成功しやすさ：弱っているほど、守りが崩れているほど高い */
+  persuadeChance(targetUid: string): number {
+    const t = this.unit(targetUid)!;
+    const base = this.enemyDef(t)?.recruitChance ?? 0;
+    const weak = 1 + (1 - t.hp / t.maxHp / PERSUADE_HP) * 0.5;
+    return Math.min(0.95, base * weak + (t.broken ? 0.2 : 0));
+  }
+
+  /** 説得する（番を使う）。成功するとその敵は戦いから抜け、協力者になる */
+  persuade(targetUid: string): BattleEvent[] {
+    if (!this.canPersuade(targetUid)) throw new Error('説得できない');
+    const actor = this.active!;
+    const t = this.unit(targetUid)!;
+    this.log = [];
+    const ok = this.rng() < this.persuadeChance(targetUid);
+    this.emit({ t: 'persuade', unit: actor.uid, target: t.uid, ok });
+    if (ok) {
+      t.alive = false;
+      t.statuses = [];
+      this.recruited.push(t.defId);
+      this.emit({ t: 'defeat', unit: t.uid });
+      this.checkEnd();
+    }
+    this.gainEnergy(actor, 10);
+    if (!this.ended) this.endTurn(actor);
     return this.flush();
   }
 
@@ -371,6 +445,7 @@ export class Battle {
       aggro: c.aggro ?? 100,
       actions: 0,
       enraged: false,
+      bench: slot >= FRONT,
       power: 1 + SKILL_STEP * (Math.max(1, m.skillLevel ?? 1) - 1),
       mods: m.mods ?? {},
     };
@@ -408,6 +483,7 @@ export class Battle {
         aggro: 100,
         actions: 0,
         enraged: false,
+        bench: false,
         power: 1,
         mods: {},
       };
@@ -415,9 +491,30 @@ export class Battle {
     this.emit({ t: 'wave', index, total: this.encounter.waves.length, enemies: this.enemies.map((u) => u.uid) });
   }
 
+  private doSwap(o: Unit, i: Unit): void {
+    const slot = o.slot;
+    o.slot = i.slot;
+    i.slot = slot;
+    o.bench = true;
+    i.bench = false;
+    // 前に出た人は、少し待ってから番が来る
+    i.av = actionLength(this.current(i).spd) * 0.5;
+    if (this.activeId === o.uid) this.activeId = i.uid;
+    this.emit({ t: 'swap', out: o.uid, in: i.uid });
+  }
+
   /** 勝ち負けと、次の群れ。終わったら true */
   private checkEnd(): boolean {
     if (this.ended) return true;
+    // 前の4人が全員倒れても、控えがいれば出てくる
+    if (this.aliveAllies().length === 0 && this.benchAllies().length > 0) {
+      const down = this.allies.filter((u) => !u.bench && !u.alive).sort((a, b) => a.slot - b.slot);
+      for (const o of down) {
+        const i = this.benchAllies()[0];
+        if (!i) break;
+        this.doSwap(o, i);
+      }
+    }
     if (this.aliveAllies().length === 0) {
       this.phase = 'lost';
       this.activeId = null;
@@ -619,7 +716,7 @@ export class Battle {
         break;
       }
       case 'heal': {
-        const boost = actor.power * (1 + (actor.mods.healPct ?? 0));
+        const boost = actor.power * this.boost * (1 + (actor.mods.healPct ?? 0));
         const amount = Math.round(((eff.casterPct ?? 0) * actor.maxHp + (eff.targetPct ?? 0) * u.maxHp) * boost);
         const before = u.hp;
         u.hp = Math.min(u.maxHp, u.hp + amount);
@@ -715,7 +812,7 @@ export class Battle {
     }
     const amount = Math.max(
       1,
-      Math.round(a.atk * mult * actor.power * a.dmgDealt * d.dmgTaken * resist * defMult * (crit ? 1 + actor.stats.critDmg : 1) * synMult),
+      Math.round(a.atk * mult * actor.power * this.boost * a.dmgDealt * d.dmgTaken * resist * defMult * (crit ? 1 + actor.stats.critDmg : 1) * synMult),
     );
     this.applyDamage(actor, target, amount, { crit, weak, synergy: syn });
 

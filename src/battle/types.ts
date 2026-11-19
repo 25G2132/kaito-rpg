@@ -116,6 +116,10 @@ export interface CharacterDef {
 export interface EnemyDef {
   id: string;
   name: string;
+  /** 説得で仲間（協力者）になりやすさ（0〜1）。ボスなど、なれない敵は書かない */
+  recruitChance?: number;
+  /** 協力者になったときのキャラの id（src/data の characters） */
+  ally?: string;
   element: string;
   base: Stats;
   toughness: number; // 守りの固さ。弱点で削り切ると崩れる

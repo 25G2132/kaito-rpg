@@ -5,6 +5,8 @@ import type { EnemyDef } from '../battle/types';
 export const ENEMIES: Record<string, EnemyDef> = {
   drone: {
     id: 'drone',
+    recruitChance: 0.45,
+    ally: 'ally_drone',
     name: '警備ドローン',
     element: 'thunder',
     base: { hp: 800, atk: 230, def: 40, spd: 96, critRate: 0, critDmg: 0 },
@@ -30,6 +32,8 @@ export const ENEMIES: Record<string, EnemyDef> = {
 
   guard: {
     id: 'guard',
+    recruitChance: 0.35,
+    ally: 'ally_guard',
     name: '黒服の警備員',
     element: 'shadow',
     base: { hp: 1000, atk: 250, def: 50, spd: 100, critRate: 0, critDmg: 0 },
@@ -55,6 +59,8 @@ export const ENEMIES: Record<string, EnemyDef> = {
 
   robot: {
     id: 'robot',
+    recruitChance: 0.3,
+    ally: 'ally_robot',
     name: '警備ロボ',
     element: 'ice',
     base: { hp: 1500, atk: 240, def: 75, spd: 88, critRate: 0, critDmg: 0 },
