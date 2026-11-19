@@ -141,6 +141,8 @@ export class Battle {
   private boost = 1;
   /** 説得で仲間になった敵（敵の id） */
   recruited: string[] = [];
+  /** 倒した敵（敵の id。怪盗手帳に使う） */
+  defeatedIds: string[] = [];
   private extras = new Map<string, NonNullable<PartyMember['extraEffects']>>();
 
   constructor(data: GameData, opts: BattleOptions) {
@@ -872,6 +874,7 @@ export class Battle {
       target.alive = false;
       target.statuses = [];
       target.shield = 0;
+      if (target.side === 'enemy') this.defeatedIds.push(target.defId);
       this.emit({ t: 'defeat', unit: target.uid });
     }
   }

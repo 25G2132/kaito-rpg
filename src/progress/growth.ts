@@ -240,6 +240,21 @@ export function slotOf(talksToday: number): 'morning' | 'lunch' | 'after' {
   return talksToday <= 0 ? 'morning' : talksToday === 1 ? 'lunch' : 'after';
 }
 
+// ---------- 怪盗手帳 ----------
+
+/** 倒した・説得した敵を、怪盗手帳に書く */
+export function recordSeen(save: SaveData, enemyIds: string[]): void {
+  for (const id of enemyIds) if (ENEMIES[id]) save.seen[id] = (save.seen[id] ?? 0) + 1;
+}
+
+/** 怪盗手帳の埋まりぐあい（出会った敵と、仲間にした協力者） */
+export function notebookProgress(save: SaveData): { found: number; total: number } {
+  const enemies = Object.keys(ENEMIES);
+  const allies = Object.values(ENEMIES).filter((e) => e.ally).map((e) => e.ally!);
+  const found = enemies.filter((id) => (save.seen[id] ?? 0) > 0).length + allies.filter((id) => save.chars[id]).length;
+  return { found, total: enemies.length + allies.length };
+}
+
 // ---------- 協力者と編成 ----------
 
 export const PARTY_MAX = 6;

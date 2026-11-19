@@ -483,3 +483,16 @@
   border-color: #5ef0a0;
   background: rgba(94, 240, 160, 0.12);
 }
+
+/* ---- 怪盗手帳 ---- */
+.nb .chip {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 0 4px;
+  border-radius: 4px;
+  color: #10131e;
+}
+.nb.unknown {
+  opacity: 0.5;
+}

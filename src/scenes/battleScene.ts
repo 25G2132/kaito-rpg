@@ -14,7 +14,7 @@ import { GameClock } from '../battleView/clock';
 import { Hud } from '../battleView/hud';
 import { Stage } from '../battleView/stage';
 import { PerfHud } from '../dev/perfHud';
-import { goNight, recruitAlly, sleep, slotOf, talk, talksToNext, TALKS_PER_DAY, type RecruitResult } from '../progress/growth';
+import { goNight, recordSeen, recruitAlly, sleep, slotOf, talk, talksToNext, TALKS_PER_DAY, type RecruitResult } from '../progress/growth';
 import { SLOT_NAMES, type NpcDef } from '../field/types';
 import { applyRewards, autoInvest, isUnlocked, partyFor, partyPower, recordLoss, rollRewards, type Reward } from '../progress/growth';
 import { defaultSave, loadSave, storeSave } from '../progress/save';
@@ -22,6 +22,7 @@ import { ITEMS } from '../data/items';
 import { esc, matsHtml, oddsText, slotName, stars } from '../ui/fmt';
 import { GrowthView } from '../ui/growthView';
 import { openFormation } from '../ui/formationView';
+import { openNotebook } from '../ui/notebookView';
 import { watchOrientation } from '../ui/orientation';
 import '../fieldView/field.css';
 import { MANSION, SCHOOL } from '../data/maps';
@@ -178,6 +179,7 @@ export function start(): void {
       <div class="row"><div class="grow"><div class="hub-title">第1章　夜の金庫室</div>
         <div class="power">${save.day}日目の夜　チーム戦力 ${power}</div></div>
         <button class="btn" data-act="sleep">寝る<small>次の日の昼へ</small></button>
+        <button class="btn" data-act="book">手帳</button>
         <button class="btn" data-act="party">編成<small>${save.party.length}人</small></button>
         <button class="btn gold" data-act="grow">育てる</button></div>
       ${notice}
@@ -197,7 +199,10 @@ export function start(): void {
         showHub(note);
       }
       else if (t.dataset.act === 'grow') openGrowth();
-      else if (t.dataset.act === 'party') {
+      else if (t.dataset.act === 'book') {
+        closeHub();
+        openNotebook(save, () => showHub());
+      } else if (t.dataset.act === 'party') {
         closeHub();
         openFormation(save, (changed) => {
           if (changed) persist();
@@ -293,7 +298,7 @@ export function start(): void {
     const enc = GAME_DATA.encounters[encId];
     const b = new Battle(GAME_DATA, { party: partyFor(save), encounter: encId, seed: Date.now() });
     const phase = runAuto(b);
-    finish(enc, { result: phase === 'won' ? 'won' : 'lost', turns: b.turnCount, biggest: 0, synergies: 0, seconds: 0, totalDamage: 0, recruited: [...b.recruited] }, true);
+    finish(enc, { result: phase === 'won' ? 'won' : 'lost', turns: b.turnCount, biggest: 0, synergies: 0, seconds: 0, totalDamage: 0, recruited: [...b.recruited], defeated: [...b.defeatedIds] }, true);
   }
 
   function finish(enc: EncounterDef, res: RunResult, skipped = false, fctx?: FieldCtx): void {
@@ -303,6 +308,7 @@ export function start(): void {
     const revenge = won && enc.kind === 'boss' && !(save.wins[enc.id] > 0) && (save.losses[enc.id] ?? 0) > 0;
     let reward: Reward | null = null;
     const recruits: RecruitResult[] = [];
+    recordSeen(save, [...res.defeated, ...res.recruited]);
     if (won) {
       reward = rollRewards(enc, rng, save);
       applyRewards(save, reward, enc);

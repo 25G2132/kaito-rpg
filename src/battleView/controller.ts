@@ -19,6 +19,7 @@ export interface RunResult {
   synergies: number;
   seconds: number; // かかった時間（一時停止の間は数えない）
   recruited: string[]; // 説得で仲間になった敵の id
+  defeated: string[]; // 倒した敵の id
   totalDamage: number;
 }
 
@@ -210,7 +211,7 @@ export class BattleController {
     this.hud.showCommand(b, null);
     const seconds = Math.round((performance.now() - this.startedAt - this.pausedTotal) / 1000);
     const result = this.stopped && !b.ended ? 'retreat' : b.phase === 'won' ? 'won' : 'lost';
-    return { result, turns: b.turnCount, biggest: this.biggest, synergies: this.synergies, seconds, totalDamage: this.hud.totalDamage, recruited: [...b.recruited] };
+    return { result, turns: b.turnCount, biggest: this.biggest, synergies: this.synergies, seconds, totalDamage: this.hud.totalDamage, recruited: [...b.recruited], defeated: [...b.defeatedIds] };
   }
 
   private async flushUlts(): Promise<void> {

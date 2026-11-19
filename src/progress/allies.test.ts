@@ -48,3 +48,23 @@ describe('協力者と編成', () => {
     expect(['won', 'lost']).toContain(runAuto(b));
   });
 });
+
+describe('怪盗手帳', () => {
+  it('倒した敵と協力者で、手帳が埋まっていく', async () => {
+    const { recordSeen, notebookProgress } = await import('./growth');
+    const s = defaultSave();
+    const p0 = notebookProgress(s);
+    expect(p0.found).toBe(0);
+    recordSeen(s, ['drone', 'drone', 'guard', 'no_such_enemy']);
+    expect(s.seen).toEqual({ drone: 2, guard: 1 });
+    recruitAlly(s, 'drone');
+    expect(notebookProgress(s).found).toBe(3);
+    expect(notebookProgress(s).total).toBe(p0.total);
+  });
+
+  it('戦いで倒した敵が数えられる', () => {
+    const b = new Battle(GAME_DATA, { party: partyFor(defaultSave()), encounter: { ...GAME_DATA.encounters.patrol1, level: 1 }, seed: 1 });
+    runAuto(b);
+    expect(b.defeatedIds.length).toBeGreaterThan(0);
+  });
+});

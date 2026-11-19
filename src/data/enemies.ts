@@ -5,6 +5,7 @@ import type { EnemyDef } from '../battle/types';
 export const ENEMIES: Record<string, EnemyDef> = {
   drone: {
     id: 'drone',
+    note: '屋敷の空を見張る小さなドローン。素早いが打たれ弱い。',
     recruitChance: 0.45,
     ally: 'ally_drone',
     name: '警備ドローン',
@@ -32,6 +33,7 @@ export const ENEMIES: Record<string, EnemyDef> = {
 
   guard: {
     id: 'guard',
+    note: '黒服の警備員。仕事熱心だが、給料には不満があるらしい。',
     recruitChance: 0.35,
     ally: 'ally_guard',
     name: '黒服の警備員',
@@ -59,6 +61,7 @@ export const ENEMIES: Record<string, EnemyDef> = {
 
   robot: {
     id: 'robot',
+    note: '重くて遅い警備ロボ。まとめて腕を振り回す。',
     recruitChance: 0.3,
     ally: 'ally_robot',
     name: '警備ロボ',
@@ -75,6 +78,7 @@ export const ENEMIES: Record<string, EnemyDef> = {
 
   boss_kurogane: {
     id: 'boss_kurogane',
+    note: '黒金邸の金庫室を守る番人。力をためた大技に気をつけろ。',
     name: '番人クロガネ',
     element: 'shadow',
     base: { hp: 13000, atk: 290, def: 80, spd: 104, critRate: 0.05, critDmg: 0.5 },

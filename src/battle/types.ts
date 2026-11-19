@@ -119,6 +119,8 @@ export interface EnemyDef {
   name: string;
   /** 説得で仲間（協力者）になりやすさ（0〜1）。ボスなど、なれない敵は書かない */
   recruitChance?: number;
+  /** 怪盗手帳に書く、ひとこと（仮） */
+  note?: string;
   /** 協力者になったときのキャラの id（src/data の characters） */
   ally?: string;
   element: string;
