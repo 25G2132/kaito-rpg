@@ -96,50 +96,88 @@ export const MANSION: MapDef & { boss: NonNullable<MapDef['boss']> } = {
   boss: { pos: [37.5, 25], encounter: 'vault', name: '金庫室の番人' },
 };
 
-// 昼の学校（拠点）。仲間に話しかけると絆が上がる。廊下の端の昇降口から下校すると夜。
+// 昼の学校（拠点）。仲間や生徒に話しかける。廊下の西の端の昇降口から下校すると夜。
+// 屋上は「階段の先」として、廊下の東の北側に置く（1つの平面にまとめている）。
 //
-//   z=0 ┌────────┬───────────┐
-//       │  教室   │   中庭     │
-//  z=10 ├──  ────┴──   ───────┤
-//       │        廊下      昇降口│
-//  z=14 └────────────────────┘
-//      x=0     x=14         x=30
+//   z=0 ┌────────┬───────────┬──────────┐
+//       │ 教室1-A │   中庭     │   屋上    │
+//  z=10 ├──  ────┴──   ──────┴───  ────┤
+//    昇降口           廊下                │
+//  z=14 ├──  ────┬──  ───┬────  ───────┤
+//       │ 図書室  │ 購買   │   体育館     │
+//  z=22 │        ├──────┘              │
+//  z=26 └────────┘                      │
+//  z=30                └──────────────┘
+//      x=0     x=14    x=24    x=30     x=44
 const desk = (x: number, z: number) => wall(x, z, 1.1, 0.7, 'desk', 0.8);
+const S = Math.PI / 2; // 南（+z）を向く
 
 export const SCHOOL: MapDef = {
   id: 'school',
   name: '学校',
   start: [11, 8.6],
   startDir: -Math.PI / 2,
+  wallColor: '#efe6d4',
   areas: [
-    { name: '教室', x: 0, z: 0, w: 14, d: 10, floor: '#6a5640' },
-    { name: '中庭', x: 14, z: 0, w: 16, d: 10, floor: '#35553a' },
-    { name: '廊下', x: 0, z: 10, w: 30, d: 4, floor: '#565b68' },
+    { name: '教室 1-A', x: 0, z: 0, w: 14, d: 10, floor: '#c9a77a' },
+    { name: '中庭', x: 14, z: 0, w: 16, d: 10, floor: '#7cbf6e' },
+    { name: '屋上', x: 30, z: 0, w: 14, d: 10, floor: '#aab6c4' },
+    { name: '廊下', x: 0, z: 10, w: 44, d: 4, floor: '#ddd8cb' },
+    { name: '図書室', x: 0, z: 14, w: 14, d: 12, floor: '#9a7656' },
+    { name: '購買', x: 14, z: 14, w: 10, d: 8, floor: '#e7d0a2' },
+    { name: '体育館', x: 24, z: 14, w: 20, d: 16, floor: '#d9a865' },
   ],
   walls: [
-    wall(-T, -T, 30 + 2 * T, T), // 北（窓側）
-    wall(-T, 0, T, 14), // 西
-    wall(-T, 14, 30 + 2 * T, T), // 南
-    wall(30, 0, T, 14), // 東
-    wall(14, 0, T, 10), // 教室と中庭の間
-    // 教室と廊下の間（x 10〜12 が戸）
+    // 外の壁
+    wall(-T, -T, 44 + 2 * T, T),
+    wall(-T, 0, T, 26),
+    wall(44, 0, T, 30),
+    wall(-T, 26, 14.4 + T, T), // 図書室の南
+    wall(14, 22, 10.4, T), // 購買の南
+    wall(24, 30, 20.4, T), // 体育館の南
+    wall(14, 22, T, 4.4), // 図書室の東（南の部分）
+    // 北の列の間仕切り
+    wall(14, 0, T, 10),
+    wall(30, 0, T, 10),
+    // 北の列と廊下の間（教室 10〜12、中庭 20〜23、屋上への階段 36〜38 が出入り口）
     wall(0, 10, 10, T),
-    wall(12, 10, 2.4, T),
-    // 中庭と廊下の間（x 20〜23 が出入り口）
-    wall(14, 10, 6, T),
-    wall(23, 10, 7, T),
-    // 机（3列×2行）と教卓
+    wall(12, 10, 8, T),
+    wall(23, 10, 13, T),
+    wall(38, 10, 6, T),
+    // 廊下と南の列の間（図書室 5〜7、購買 17〜21、体育館 32〜35 が出入り口）
+    wall(0, 14 - T, 5, T),
+    wall(7, 14 - T, 10, T),
+    wall(21, 14 - T, 11, T),
+    wall(35, 14 - T, 9, T),
+    // 南の列の間仕切り
+    wall(14, 14, T, 8),
+    wall(24, 14, T, 16),
+    // 教室：机（3列×2行）と教卓
     desk(2, 3),
     desk(5, 3),
     desk(8, 3),
     desk(2, 5.5),
     desk(5, 5.5),
     desk(8, 5.5),
-    wall(5.5, 0.6, 2, 0.8, 'desk', 1.0),
-    // 中庭の花だんとベンチ
+    wall(5.5, 0.9, 2, 0.8, 'desk', 1.0),
+    // 中庭：花だんとベンチ
     wall(17, 2, 3, 1, 'hedge', 0.7),
     wall(25, 2, 3, 1, 'hedge', 0.7),
     wall(20.5, 6.5, 3, 0.6, 'desk', 0.5),
+    // 屋上：ベンチ
+    wall(33, 4, 3, 0.6, 'desk', 0.5),
+    // 廊下：ロッカー
+    wall(8, 13.1, 5, 0.5, 'locker', 1.8),
+    wall(25, 13.1, 6, 0.5, 'locker', 1.8),
+    // 図書室：本棚と読書机
+    wall(1, 16.5, 5, 0.7, 'shelf', 2.2),
+    wall(1, 19.5, 5, 0.7, 'shelf', 2.2),
+    wall(1, 22.5, 5, 0.7, 'shelf', 2.2),
+    wall(8.5, 20, 3.5, 1.6, 'desk', 0.8),
+    // 購買：カウンター
+    wall(15, 17.5, 8, 0.8, 'desk', 1.0),
+    // 体育館：舞台
+    wall(30, 28, 10, 2, 'desk', 0.9),
   ],
   doors: [],
   shadows: [],
@@ -147,12 +185,29 @@ export const SCHOOL: MapDef = {
   cameras: [],
   patrols: [],
   chests: [],
+  props: [
+    { kind: 'board', x: 7, z: 0.05, w: 8, dir: S },
+    { kind: 'clock', x: 12.5, z: 0.05, dir: S },
+    { kind: 'window', x: 0.05, z: 3, w: 2.2, dir: 0 },
+    { kind: 'window', x: 0.05, z: 6.5, w: 2.2, dir: 0 },
+    { kind: 'poster', x: 3, z: 10.45, dir: S, color: '#ff8fa3' },
+    { kind: 'poster', x: 15.5, z: 10.45, dir: S, color: '#7ab8ff' },
+    { kind: 'poster', x: 27, z: 10.45, dir: S, color: '#ffd25a' },
+    { kind: 'poster', x: 40, z: 10.45, dir: S, color: '#5ef0a0' },
+    { kind: 'plant', x: 13.2, z: 11 },
+    { kind: 'plant', x: 43.2, z: 13 },
+    { kind: 'plant', x: 29.2, z: 1 },
+    { kind: 'fence', x: 30.4, z: 0.2, w: 13.4, dir: S },
+    { kind: 'bread', x: 16, z: 17.6, w: 6 },
+    { kind: 'hoop', x: 24.8, z: 22 },
+    { kind: 'hoop', x: 43.2, z: 22 },
+  ],
   npcs: [
     { charId: 'shin', pos: [2.6, 7.6], dir: 0 },
-    { charId: 'yuki', pos: [9.5, 1.6], dir: Math.PI / 2 },
+    { charId: 'yuki', pos: [9.5, 1.9], dir: S },
     { charId: 'hayate', pos: [22, 4.6], dir: Math.PI },
   ],
-  exit: { pos: [28.6, 12], label: '下校する（夜へ）' },
+  exit: { pos: [1.2, 12], label: '昇降口から下校する（夜へ）' },
 };
 
 export const MAPS: Record<string, MapDef> = { mansion: MANSION, school: SCHOOL };

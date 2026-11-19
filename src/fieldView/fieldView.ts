@@ -4,13 +4,13 @@ import type { LookDef } from '../battle/types';
 import { ENEMIES } from '../data/enemies';
 import { ActorView } from '../battleView/actor';
 import { segmentHitsRect, type FieldState } from '../field/logic';
-import type { NpcDef, Rect } from '../field/types';
+import type { NpcDef, PropDef, Rect } from '../field/types';
 import { CHARACTERS } from '../data/characters';
 
 // 歩く場所の3D。形はすべてプログラムで作る（外の素材なし）。
 // 見回りとカメラの「見える範囲」は床に扇の形で出す。影は床の暗い部分。
 
-const WALL_COLORS = { wall: 0x4a4458, hedge: 0x2f5a35, shelf: 0x5a4632, desk: 0x8a6a48 } as const;
+const WALL_COLORS = { wall: 0x4a4458, hedge: 0x2f5a35, shelf: 0x5a4632, desk: 0x8a6a48, locker: 0x5f8fd0 } as const;
 const PITCH = 0.95; // カメラの見下ろす角度
 const CAM_DIST = 8.5;
 
@@ -83,12 +83,16 @@ export class FieldView {
     // 壁（高い壁は低めにして、上から見やすくする）
     for (const w of map.walls) {
       const h = Math.min(w.h ?? 3, 2.4);
-      const m = box(w, h, WALL_COLORS[w.kind ?? 'wall']);
+      const kind = w.kind ?? 'wall';
+      const color = kind === 'wall' && map.wallColor ? new THREE.Color(map.wallColor).getHex() : WALL_COLORS[kind];
+      const m = box(w, h, color);
       m.castShadow = true;
       m.receiveShadow = true;
       s.add(m);
       this.walls.push({ mesh: m, rect: w });
     }
+    // 見た目だけの小物
+    for (const p of map.props ?? []) s.add(buildProp(p));
     // 扉（鍵がかかっている間は赤く光る）
     for (const d of map.doors) {
       const m = box(d, 2.4, 0x8a2036);
@@ -346,4 +350,74 @@ function labelTexture(text: string, color: string): THREE.CanvasTexture {
   g.textBaseline = 'middle';
   g.fillText(text, 128, 34);
   return new THREE.CanvasTexture(c);
+}
+
+/** 小物を作る（黒板・時計・窓・掲示物・植木・フェンス・パン・ゴール） */
+function buildProp(p: PropDef): THREE.Object3D {
+  const g = new THREE.Group();
+  const std = (color: THREE.ColorRepresentation, extra: Partial<THREE.MeshStandardMaterialParameters> = {}) =>
+    new THREE.MeshStandardMaterial({ color, roughness: 0.7, ...extra });
+  const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    g.add(m);
+    return m;
+  };
+  const w = p.w ?? 1;
+  switch (p.kind) {
+    case 'board': {
+      add(new THREE.BoxGeometry(w, 1.2, 0.06), std(0x2f5a3c), 0, 1.5, 0);
+      add(new THREE.BoxGeometry(w + 0.2, 0.08, 0.12), std(0x8a6a48), 0, 0.88, 0.04);
+      // 白いチョークの字（線で）
+      for (let i = 0; i < 4; i++) add(new THREE.BoxGeometry(w * (0.3 + Math.random() * 0.4), 0.04, 0.02), std(0xf4f4ee), -w * 0.2 + Math.random() * 0.4, 1.8 - i * 0.22, 0.04);
+      break;
+    }
+    case 'clock': {
+      const face = add(new THREE.CylinderGeometry(0.28, 0.28, 0.06, 24), std(0xffffff), 0, 2.1, 0);
+      face.rotation.x = Math.PI / 2;
+      add(new THREE.BoxGeometry(0.03, 0.2, 0.02), std(0x222222), 0, 2.17, 0.05);
+      add(new THREE.BoxGeometry(0.14, 0.03, 0.02), std(0x222222), 0.06, 2.1, 0.05);
+      break;
+    }
+    case 'window': {
+      add(new THREE.BoxGeometry(w, 1.1, 0.04), std(0xbfe6ff, { emissive: 0x9fd8ff, emissiveIntensity: 0.6, roughness: 0.1 }), 0, 1.5, 0);
+      add(new THREE.BoxGeometry(0.06, 1.1, 0.06), std(0xffffff), 0, 1.5, 0.02);
+      break;
+    }
+    case 'poster': {
+      add(new THREE.BoxGeometry(0.7, 0.9, 0.03), std(p.color ?? 0xff8fa3), 0, 1.6, 0);
+      add(new THREE.BoxGeometry(0.5, 0.08, 0.02), std(0xffffff), 0, 1.85, 0.02);
+      add(new THREE.BoxGeometry(0.4, 0.06, 0.02), std(0xffffff), 0, 1.5, 0.02);
+      break;
+    }
+    case 'plant': {
+      add(new THREE.CylinderGeometry(0.22, 0.17, 0.4, 14), std(0xc06a3a), 0, 0.2, 0);
+      add(new THREE.SphereGeometry(0.38, 14, 10), std(0x4caf50), 0, 0.75, 0);
+      break;
+    }
+    case 'fence': {
+      add(new THREE.BoxGeometry(w, 0.06, 0.06), std(0x6b7a8f, { metalness: 0.5 }), w / 2, 1.1, 0);
+      for (let x = 0; x <= w; x += 0.6) add(new THREE.BoxGeometry(0.05, 1.1, 0.05), std(0x6b7a8f, { metalness: 0.5 }), x, 0.55, 0);
+      break;
+    }
+    case 'bread': {
+      const colors = [0xe2a85a, 0xf0c070, 0xc8833e, 0xffd27a];
+      for (let i = 0; i < Math.round(w / 0.5); i++) {
+        const b = add(new THREE.SphereGeometry(0.16, 10, 8), std(colors[i % colors.length]), i * 0.5, 1.12, 0.4);
+        b.scale.set(1.3, 0.7, 1);
+      }
+      break;
+    }
+    case 'hoop': {
+      add(new THREE.BoxGeometry(0.12, 2.9, 0.12), std(0x888888, { metalness: 0.6 }), 0, 1.45, 0);
+      add(new THREE.BoxGeometry(0.06, 0.9, 1.4), std(0xffffff), 0, 2.9, 0);
+      const ring = add(new THREE.TorusGeometry(0.28, 0.03, 8, 20), std(0xff6a3d), 0.35, 2.6, 0);
+      ring.rotation.x = Math.PI / 2;
+      break;
+    }
+  }
+  g.position.set(p.x, 0, p.z);
+  // 表の向き（+z 向きで作っているので回す）
+  g.rotation.y = Math.PI / 2 - (p.dir ?? Math.PI / 2);
+  return g;
 }

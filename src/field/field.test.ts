@@ -183,7 +183,7 @@ describe('学校', () => {
       for (let i = 0; i < steps; i++) f.moveBy(dx * 0.1, dz * 0.1);
     };
     go(0, 1, 40); // 戸を抜けて廊下へ
-    go(1, 0, 200); // 廊下を東へ
+    go(-1, 0, 200); // 廊下を西へ（昇降口）
     expect(f.nearby()?.kind).toBe('exit');
   });
 });
