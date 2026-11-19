@@ -92,12 +92,25 @@ function reveal(res: PullResult[]): Promise<void> {
       };
     };
     if (best === 5) {
-      // ★5：金色の光 → 仮の1枚絵（頭文字）と名前
+      // ★5：金色の光 → 1枚絵（public/art/gacha/<id>.webp があればそれ、なければ頭文字）と名前
       const r = five[0];
       const color = r.kind === 'char' ? ELEMENTS[CHARACTERS[r.id].element].color : '#ffc93d';
       el.innerHTML = `<div class="g5" style="--c:${color}"><div class="g5light"></div><div class="g5art">${esc(r.name.slice(0, 1))}</div>
         <div class="g5name"><small>★★★★★</small>${esc(r.name)}</div><div class="gtap">タップ</div></div>`;
+      showArt(el.querySelector('.g5') as HTMLElement, r.id);
       el.onclick = showCards;
     } else showCards();
   });
+}
+
+/** 1枚絵があれば画面いっぱいに出す。ファイルがなければ何もしない（頭文字のまま） */
+function showArt(box: HTMLElement, id: string): void {
+  const img = new Image();
+  img.className = 'g5img';
+  img.alt = '';
+  img.onload = () => {
+    box.insertBefore(img, box.children[1] ?? null);
+    box.classList.add('has-img');
+  };
+  img.src = `${import.meta.env.BASE_URL}art/gacha/${id}.webp`;
 }

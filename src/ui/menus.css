@@ -602,6 +602,28 @@
   box-shadow: 0 0 60px #ffc93d;
   animation: zoomin 1.2s ease-out;
 }
+.g5img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  animation: zoomin 1.2s ease-out;
+}
+.g5.has-img .g5art {
+  display: none;
+}
+.g5.has-img .gtap {
+  position: absolute;
+  right: 20px;
+  bottom: 18px;
+}
+.g5.has-img .g5name {
+  position: absolute;
+  left: 24px;
+  bottom: 18px;
+  text-align: left;
+}
 .g5name {
   position: relative;
   margin-top: 14px;
