@@ -2,7 +2,7 @@
 // 歩く・壁にぶつかる・見回りとカメラが見る・影に隠れる・ハッキング・宝箱・戦いの始まり方。
 
 import type { Opening } from '../battle/battle';
-import type { CameraDef, ChestDef, MapDef, NpcDef, PatrolDef, Rect, Slot, TerminalDef, Vec2 } from './types';
+import type { CameraDef, ChestDef, HiddenDef, MapDef, NpcDef, PatrolDef, Rect, Slot, TerminalDef, Vec2 } from './types';
 
 export const PLAYER_RADIUS = 0.35;
 export const WALK_SPEED = 3.0;
@@ -15,7 +15,9 @@ export const CONTACT_RANGE = 0.9; // 敵とぶつかる近さ
 export const ATTACK_RANGE = 1.7; // 攻撃が届く近さ
 export const ATTACK_ANGLE = 1.2; // 攻撃が届く角度（片側、ラジアン）
 export const INTERACT_RANGE = 1.6;
-export const HEAR_RANGE = 1.6; // 影の中でも、これより近いと気づかれる（走っているとき）
+export const HEAR_RANGE = 1.6;
+export const LENS_RANGE = 6; // 解析レンズで見える近さ
+export const HINT_RANGE = 7; // これより近いと、レンズのボタンが知らせる // 影の中でも、これより近いと気づかれる（走っているとき）
 
 export const inRect = (p: Vec2, r: Rect) => p[0] >= r.x && p[0] <= r.x + r.w && p[1] >= r.z && p[1] <= r.z + r.d;
 const dist = (a: Vec2, b: Vec2) => Math.hypot(a[0] - b[0], a[1] - b[1]);
@@ -79,6 +81,9 @@ export type FieldEvent =
   | { t: 'boss' }
   | { t: 'talk'; npc: string } // 人に話しかけた（npc は NpcDef の id）
   | { t: 'exit' } // 出口
+  | { t: 'found'; id: string; text: string } // レンズで見つけた
+  | { t: 'pickup'; id: string; items: Record<string, number>; text: string } // 隠れた材料を拾った
+  | { t: 'hiddenBattle'; id: string; encounter: string; text: string } // 隠れた敵
   | { t: 'miss' }; // 攻撃が空ぶり
 
 export interface PatrolState {
@@ -119,7 +124,8 @@ export type Interactable =
   | { kind: 'terminal'; def: TerminalDef }
   | { kind: 'boss' }
   | { kind: 'npc'; def: NpcDef }
-  | { kind: 'exit'; label: string };
+  | { kind: 'exit'; label: string }
+  | { kind: 'hidden'; def: HiddenDef };
 
 export class FieldState {
   readonly map: MapDef;
@@ -135,7 +141,13 @@ export class FieldState {
   slot: Slot;
   npcs: NpcState[] = [];
 
-  constructor(map: MapDef, slot: Slot = 'morning') {
+  /** 解析レンズ */
+  lensOn = false;
+  revealed = new Set<string>(); // レンズで見えた隠し要素
+  collected: Set<string>; // もう拾った・倒した隠し要素（保存から）
+
+  constructor(map: MapDef, slot: Slot = 'morning', collected: Iterable<string> = []) {
+    this.collected = new Set(collected);
     this.map = map;
     this.slot = slot;
     this.pos = [...map.start];
@@ -217,6 +229,16 @@ export class FieldState {
         const step = Math.min(tl, NPC_WALK * dt);
         n.pos = [n.pos[0] + (tx / tl) * step, n.pos[1] + (tz / tl) * step];
         n.dir = Math.atan2(tz, tx);
+      }
+    }
+    // 解析レンズ：近くの隠し要素が見える
+    if (this.lensOn) {
+      for (const h of this.map.hidden ?? []) {
+        if (this.collected.has(h.id) || this.revealed.has(h.id)) continue;
+        if (dist(h.pos, this.pos) <= LENS_RANGE) {
+          this.revealed.add(h.id);
+          ev.push({ t: 'found', id: h.id, text: h.text });
+        }
       }
     }
     const hidden = this.inShadow();
@@ -313,6 +335,9 @@ export class FieldState {
     if (this.map.boss) cands.push({ d: dist(this.map.boss.pos, this.pos), it: { kind: 'boss' } });
     for (const n of this.npcs) if (n.present) cands.push({ d: dist(n.pos, this.pos), it: { kind: 'npc', def: n.def } });
     if (this.map.exit) cands.push({ d: dist(this.map.exit.pos, this.pos), it: { kind: 'exit', label: this.map.exit.label } });
+    for (const h of this.map.hidden ?? []) {
+      if (this.revealed.has(h.id) && !this.collected.has(h.id)) cands.push({ d: dist(h.pos, this.pos), it: { kind: 'hidden', def: h } });
+    }
     const best = cands.filter((c) => c.d <= INTERACT_RANGE).sort((a, b) => a.d - b.d)[0];
     return best?.it ?? null;
   }
@@ -336,7 +361,17 @@ export class FieldState {
     }
     if (it.kind === 'npc') return { t: 'talk', npc: it.def.id };
     if (it.kind === 'exit') return { t: 'exit' };
+    if (it.kind === 'hidden') {
+      if (it.def.kind === 'enemy') return { t: 'hiddenBattle', id: it.def.id, encounter: it.def.encounter!, text: it.def.text };
+      this.collected.add(it.def.id);
+      return { t: 'pickup', id: it.def.id, items: { ...(it.def.items ?? {}) }, text: it.def.text };
+    }
     return { t: 'boss' };
+  }
+
+/** まだ見つけていない隠し要素が近くにあるか（レンズのボタンを光らせる） */
+  hiddenNearby(): boolean {
+    return (this.map.hidden ?? []).some((h) => !this.collected.has(h.id) && !this.revealed.has(h.id) && dist(h.pos, this.pos) <= HINT_RANGE);
   }
 
   /** いまいる場所の名前 */

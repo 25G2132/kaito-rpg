@@ -275,7 +275,7 @@ export function start(): void {
 
   // ---- 戦い ----
   /** 歩く場所からの戦いなら、その見回り（ボスなら null）と始まり方 */
-  type FieldCtx = { opening: Opening; patrol: string | null };
+  type FieldCtx = { opening: Opening; patrol: string | null; hidden?: string };
 
   async function runBattle(encId: string, fctx?: FieldCtx): Promise<void> {
     closeHub();
@@ -365,7 +365,7 @@ export function start(): void {
           : '';
     // 歩く場所の戦いなら、終わり方がちがう
     const inField = !!fctx;
-    const escaped = inField && won && fctx!.patrol === null; // ボスに勝って脱出
+    const escaped = inField && won && fctx!.patrol === null && !fctx!.hidden; // ボスに勝って脱出
     if (inField && (!won || escaped)) endInfiltration();
     const title = escaped ? '脱出成功！' : inField && !won ? '捕まってしまった…' : won ? '勝った！' : '負けた…';
     const buttons =
@@ -386,7 +386,7 @@ export function start(): void {
       `result ${won ? 'won' : 'lost'}`,
     );
     p.querySelector('[data-act="again"]')?.addEventListener('click', () => (skipped ? skipBattle(enc.id) : void runBattle(enc.id)));
-    p.querySelector('[data-act="continue"]')?.addEventListener('click', () => resumeField(fctx!.patrol!));
+    p.querySelector('[data-act="continue"]')?.addEventListener('click', () => resumeField(fctx!));
     p.querySelector('[data-act="grow"]')?.addEventListener('click', () => {
       hud.closeOverlay();
       hud.clearBattle();
@@ -415,10 +415,10 @@ export function start(): void {
     hud.closeOverlay();
     hud.clearBattle();
     stage.clearEnemies();
-    const state = new FieldState(MANSION);
+    const state = new FieldState(MANSION, 'morning', collectedHidden());
     const view = new FieldView(state, { playerLook: CHARACTERS.akari.look, vrm: vrmOf('akari') });
     view.resize(window.innerWidth, window.innerHeight);
-    const fh = new FieldHud({ onAttack: fieldAttack, onInteract: fieldInteract, onMenu: fieldMenu });
+    const fh = new FieldHud({ onAttack: fieldAttack, onInteract: fieldInteract, onMenu: fieldMenu, onLens: toggleLens });
     fieldRun = { state, view, fh, hackT: null, busy: false, talking: false, mapTick: 0, kind: 'mansion' };
     fh.banner(`${MANSION.name}に忍び込んだ。影の中なら見つからない`, 'info');
   }
@@ -431,12 +431,12 @@ export function start(): void {
     hud.clearBattle();
     stage.clearEnemies();
     stage.showParty([], null); // VRM を学校の人にわたす
-    const state = new FieldState(SCHOOL, slotOf(save.talksToday));
+    const state = new FieldState(SCHOOL, slotOf(save.talksToday), collectedHidden());
     const npcVrms: Record<string, VRM | null> = {};
     for (const id of DEFAULT_PARTY) npcVrms[id] = vrmOf(id);
     const view = new FieldView(state, { playerLook: CHARACTERS.akari.look, vrm: vrmOf('akari'), day: true, npcVrms });
     view.resize(window.innerWidth, window.innerHeight);
-    const fh = new FieldHud({ onAttack: () => {}, onInteract: fieldInteract, onMenu: schoolMenu }, { school: true, menuLabel: '下校' });
+    const fh = new FieldHud({ onAttack: () => {}, onInteract: fieldInteract, onMenu: schoolMenu, onLens: toggleLens }, { school: true, menuLabel: '下校' });
     fieldRun = { state, view, fh, hackT: null, busy: false, talking: false, mapTick: 0, kind: 'school' };
     fh.banner(note || `${save.day}日目の昼。仲間に話しかけると絆が深まる（1日${TALKS_PER_DAY}回）`, 'info');
   }
@@ -501,17 +501,20 @@ export function start(): void {
     fieldRun = null;
   }
 
-  function fieldBattle(encounter: string, opening: Opening, patrol: string | null): void {
+  /** もう拾った・倒した隠し要素（保存の印から） */
+  const collectedHidden = () => Object.keys(save.flags).filter((k) => k.startsWith('hidden_')).map((k) => k.slice(7));
+
+  function fieldBattle(encounter: string, opening: Opening, patrol: string | null, hidden?: string): void {
     const r = fieldRun;
     if (!r) return;
     r.busy = true;
     r.hackT = null;
     r.fh.setHack(null);
     r.fh.root.style.display = 'none';
-    void runBattle(encounter, { opening, patrol });
+    void runBattle(encounter, { opening, patrol, hidden });
   }
 
-  function resumeField(patrol: string): void {
+  function resumeField(fctx: FieldCtx): void {
     const r = fieldRun;
     if (!r) return showHub();
     hud.closeOverlay();
@@ -519,10 +522,23 @@ export function start(): void {
     stage.clearEnemies();
     stage.showParty([], null); // 戦いの味方を片づけ、VRM を歩く場所にもどす
     r.view.attachVrm(vrmOf('akari'));
-    r.state.defeat(patrol);
+    if (fctx.patrol) r.state.defeat(fctx.patrol);
+    if (fctx.hidden) {
+      r.state.collected.add(fctx.hidden);
+      save.flags[`hidden_${fctx.hidden}`] = 1;
+      persist();
+    }
     r.busy = false;
     r.fh.root.style.display = '';
     r.fh.banner('見回りを倒した。奥へ進もう', 'info');
+  }
+
+  /** 解析レンズ（シンの道具）をつける・はずす */
+  function toggleLens(): void {
+    const r = fieldRun;
+    if (!r || r.busy || r.talking) return;
+    r.state.lensOn = !r.state.lensOn;
+    if (r.state.lensOn) r.fh.banner('解析レンズ：近くの隠れたものが見える', 'info');
   }
 
   function fieldAttack(): void {
@@ -593,6 +609,21 @@ export function start(): void {
       case 'battle':
         fieldBattle(e.encounter, e.opening, e.patrol);
         return true;
+      case 'found':
+        r.fh.banner(`🔍 ${e.text}`, 'good');
+        break;
+      case 'pickup': {
+        for (const [k, n] of Object.entries(e.items)) save.items[k] = (save.items[k] ?? 0) + n;
+        save.flags[`hidden_${e.id}`] = 1;
+        persist();
+        const list = Object.entries(e.items).map(([k, n]) => `${ITEMS[k].name}×${n}`).join('・');
+        r.fh.banner(`見つけた！ ${list}`, 'good');
+        break;
+      }
+      case 'hiddenBattle':
+        r.state.lensOn = false;
+        fieldBattle(e.encounter, 'normal', null, e.id);
+        return true;
       case 'miss':
       case 'boss':
       case 'talk':
@@ -637,6 +668,7 @@ export function start(): void {
     r.view.update(real, speed * (r.fh.running() ? 1 : 0.6), hidden);
     r.fh.setArea(r.state.areaName());
     r.fh.setHidden(hidden);
+    r.fh.setLens(r.state.lensOn, r.state.hiddenNearby());
     const it = r.state.nearby();
     const label = !it
       ? null
@@ -650,7 +682,11 @@ export function start(): void {
               : `${it.def.name}と話す`
             : it.kind === 'exit'
               ? it.label
-              : '番人に挑む';
+              : it.kind === 'hidden'
+                ? it.def.kind === 'enemy'
+                  ? '隠れた敵に挑む'
+                  : '拾う'
+                : '番人に挑む';
     r.fh.setInteract(label);
     if (r.kind === 'school') r.fh.setStatus(`${save.day}日目　${SLOT_NAMES[r.state.slot]}　仲間と話せる回数 あと${TALKS_PER_DAY - save.talksToday}`);
     if (++r.mapTick % 3 === 0) r.fh.drawMap(r.state);

@@ -94,6 +94,12 @@ export const MANSION: MapDef & { boss: NonNullable<MapDef['boss']> } = {
     { id: 'ch4', pos: [31, 27], items: { book: 2, key: 1 } },
   ],
   boss: { pos: [37.5, 25], encounter: 'vault', name: '金庫室の番人' },
+  hidden: [
+    { id: 'm_garden', pos: [0.8, 0.8], kind: 'item', items: { book: 3 }, text: '庭のすみの石の下に、だれかが隠した参考書' },
+    { id: 'm_pillar', pos: [6.4, 18.5], kind: 'item', items: { parts: 8 }, text: '柱のかげに落ちていた部品' },
+    { id: 'm_archive', pos: [29.4, 27.4], kind: 'item', items: { blueprint: 2 }, text: '資料のすきまに、設計図の切れ端' },
+    { id: 'm_shadow', pos: [14.8, 10.8], kind: 'enemy', encounter: 'hidden_guard', text: '暗がりに、強そうな見回りがひそんでいる！' },
+  ],
 };
 
 // 昼の学校（拠点）。仲間や生徒に話しかける。廊下の西の端の昇降口から下校すると夜。
@@ -271,6 +277,12 @@ export const SCHOOL: MapDef = {
     },
   ],
   exit: { pos: [1.2, 12], label: '昇降口から下校する（夜へ）' },
+  hidden: [
+    { id: 's_library', pos: [1.4, 25], kind: 'item', items: { note: 2 }, text: 'だれも借りない本に、技の手帳がはさまっていた' },
+    { id: 's_roof', pos: [43, 1], kind: 'item', items: { parts: 10 }, text: '屋上のすみに、だれかの工具箱' },
+    { id: 's_gym', pos: [43, 29], kind: 'item', items: { key: 1 }, text: '体育館の裏に、光る鍵の欠片' },
+    { id: 's_garden', pos: [28.6, 1.2], kind: 'item', items: { book: 2 }, text: '花だんのかげに、参考書' },
+  ],
 };
 
 export const MAPS: Record<string, MapDef> = { mansion: MANSION, school: SCHOOL };

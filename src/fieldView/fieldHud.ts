@@ -10,6 +10,7 @@ export interface FieldHudHandlers {
   onAttack: () => void;
   onInteract: () => void;
   onMenu: () => void;
+  onLens: () => void;
 }
 
 const STICK_R = 56;
@@ -22,6 +23,7 @@ export class FieldHud {
   private stickKnob = document.createElement('div');
   private interactBtn = document.createElement('button');
   private runBtn = document.createElement('button');
+  private lensBtn = document.createElement('button');
   private area = document.createElement('div');
   private hidden = document.createElement('div');
   private hack = document.createElement('div');
@@ -39,6 +41,7 @@ export class FieldHud {
     this.keys.add(e.code);
     if (e.code === 'Space') this.h.onAttack();
     if (e.code === 'KeyE' || e.code === 'Enter') this.h.onInteract();
+    if (e.code === 'KeyQ') this.h.onLens();
   };
   private onKeyUp = (e: KeyboardEvent) => this.keys.delete(e.code);
 
@@ -71,12 +74,15 @@ export class FieldHud {
     this.interactBtn.addEventListener('click', () => h.onInteract());
     this.runBtn.className = 'fbtn frun';
     this.runBtn.textContent = '走る';
+    this.lensBtn.className = 'fbtn flens';
+    this.lensBtn.innerHTML = '<b>レンズ</b><small>解析</small>';
+    this.lensBtn.addEventListener('click', () => h.onLens());
     this.runBtn.addEventListener('click', () => {
       this.run = !this.run;
       this.runBtn.classList.toggle('on', this.run);
     });
 
-    this.root.append(this.touch, this.stickBase, this.area, this.status, this.hidden, this.hack, this.mini, menu, atk, this.interactBtn, this.runBtn);
+    this.root.append(this.touch, this.stickBase, this.area, this.status, this.hidden, this.hack, this.mini, menu, atk, this.interactBtn, this.runBtn, this.lensBtn);
     document.body.appendChild(this.root);
     this.setInteract(null);
     this.setHack(null);
@@ -165,6 +171,12 @@ export class FieldHud {
   }
   setStatus(text: string): void {
     if (this.status.textContent !== text) this.status.textContent = text;
+  }
+  /** レンズ：つけている間は青い画面。近くに何かあればボタンが知らせる */
+  setLens(on: boolean, hint: boolean): void {
+    this.root.classList.toggle('lens', on);
+    this.lensBtn.classList.toggle('on', on);
+    this.lensBtn.classList.toggle('hint', hint && !on);
   }
   setHidden(on: boolean): void {
     this.hidden.classList.toggle('on', on);

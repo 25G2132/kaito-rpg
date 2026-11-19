@@ -59,6 +59,17 @@ export const ENCOUNTERS: Record<string, EncounterDef> = {
   ...field('field_garden', '庭の見回り', 18, [['guard', 'drone']], { exp: 150, items: { parts: [3, 5] }, gear: 0 }),
   ...field('field_hall', 'ホールの見回り', 24, [['drone', 'guard', 'drone']], { exp: 200, items: { book: [1, 1], parts: [4, 6] }, gear: 1 }),
   ...field('field_archive', '資料室の見回り', 29, [['robot', 'guard', 'robot']], { exp: 250, items: { note: [1, 1], parts: [5, 7] }, gear: 1 }),
+  // 解析レンズで見つかる、隠れた強い見回り（★5 の装備が出やすい）
+  hidden_guard: {
+    id: 'hidden_guard',
+    name: '暗がりの見回り',
+    desc: '',
+    kind: 'field',
+    level: 30,
+    waves: [['guard', 'robot', 'guard']],
+    rewards: { exp: 350, items: { parts: [8, 12], blueprint: [1, 1] }, gear: 1 },
+    gearOdds: { 4: 60, 5: 40 },
+  },
   ...field('field_vault', '金庫室の前の見回り', 32, [['guard', 'robot', 'guard']], { exp: 300, items: { key: [1, 1], parts: [6, 8] }, gear: 1 }),
   vault: {
     id: 'vault',

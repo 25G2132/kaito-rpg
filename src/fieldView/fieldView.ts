@@ -39,6 +39,7 @@ export class FieldView {
   private doors = new Map<string, THREE.Mesh>();
   private terminals = new Map<string, THREE.Mesh>();
   private chests = new Map<string, THREE.Group>();
+  private hiddenMarks = new Map<string, THREE.Group>();
   private moon: THREE.DirectionalLight;
   private time = 0;
   private ring: THREE.Mesh;
@@ -90,6 +91,28 @@ export class FieldView {
       m.receiveShadow = true;
       s.add(m);
       this.walls.push({ mesh: m, rect: w });
+    }
+    // 解析レンズで見えるもの（見えるまでは出さない）
+    for (const h of map.hidden ?? []) {
+      const g = new THREE.Group();
+      const color = h.kind === 'enemy' ? 0xff3050 : 0x5ef0ff;
+      const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.22), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.2 }));
+      gem.position.y = 0.8;
+      gem.name = 'gem';
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.4, 0.55, 28), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.7, side: THREE.DoubleSide }));
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.04;
+      g.add(gem, ring);
+      if (h.kind === 'enemy') {
+        const look = ENEMIES.guard.look;
+        const shade = new ActorView({ ...look, color: '#1a1020' }, 1);
+        shade.root.position.set(0.9, 0, 0);
+        g.add(shade.root);
+      }
+      g.position.set(h.pos[0], 0, h.pos[1]);
+      g.visible = false;
+      s.add(g);
+      this.hiddenMarks.set(h.id, g);
     }
     // 見た目だけの小物
     for (const p of map.props ?? []) s.add(buildProp(p));
@@ -269,6 +292,13 @@ export class FieldView {
     for (const [id, m] of this.terminals) {
       (m.material as THREE.MeshStandardMaterial).emissive.setHex(st.hacked.has(id) ? 0x30ff80 : 0x1ec8ff);
       (m.material as THREE.MeshStandardMaterial).emissiveIntensity = st.hacked.has(id) ? 0.4 : 0.5 + Math.sin(this.time * 4) * 0.3;
+    }
+    for (const [id, g] of this.hiddenMarks) {
+      g.visible = st.revealed.has(id) && !st.collected.has(id);
+      if (!g.visible) continue;
+      const gem = g.getObjectByName('gem')!;
+      gem.rotation.y += dt * 2;
+      gem.position.y = 0.8 + Math.sin(this.time * 3) * 0.1;
     }
     for (const [id, g] of this.chests) {
       const lid = g.getObjectByName('lid') as THREE.Mesh;

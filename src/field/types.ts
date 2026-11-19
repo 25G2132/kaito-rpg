@@ -79,6 +79,7 @@ export interface MapDef {
   chests: ChestDef[];
   boss?: { pos: Vec2; encounter: string; name: string };
   npcs?: NpcDef[]; // 話しかけられる人（学校）
+  hidden?: HiddenDef[]; // 解析レンズで見えるもの（隠し要素）
   props?: PropDef[]; // 見た目だけの小物（ぶつからない）
   wallColor?: string; // 壁の色（学校は明るく）
   exit?: { pos: Vec2; label: string }; // 出口（学校なら「下校する」）
@@ -97,6 +98,16 @@ export interface PropDef {
 /** 学校の時間（朝・昼休み・放課後） */
 export type Slot = 'morning' | 'lunch' | 'after';
 export const SLOT_NAMES: Record<Slot, string> = { morning: '朝', lunch: '昼休み', after: '放課後' };
+
+/** 解析レンズで見えるもの。item＝拾える材料、enemy＝隠れた敵（戦い） */
+export interface HiddenDef {
+  id: string;
+  pos: Vec2;
+  kind: 'item' | 'enemy';
+  items?: Record<string, number>;
+  encounter?: string;
+  text: string; // 見つけたときのひとこと
+}
 
 /** 時間ごとの居場所。route があれば、そこを歩きまわる */
 export interface NpcPlace {

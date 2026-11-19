@@ -233,3 +233,51 @@ describe('学校：だれにでも話しかけられる', () => {
     }
   });
 });
+
+describe('解析レンズと隠し要素', () => {
+  const free = (f: FieldState) => !f.solids().some((r) => r.x - 0.35 < f.pos[0] && f.pos[0] < r.x + r.w + 0.35 && r.z - 0.35 < f.pos[1] && f.pos[1] < r.z + r.d + 0.35);
+
+  it('レンズをつけないと見えず、つけると近くのものが見える。見えたら拾える', () => {
+    const h = SCHOOL.hidden![0];
+    const f = new FieldState(SCHOOL);
+    f.pos = [h.pos[0] + 0.8, h.pos[1] - 0.6];
+    expect(f.hiddenNearby()).toBe(true);
+    f.update(0.05, still);
+    expect(f.nearby()?.kind).not.toBe('hidden');
+    f.lensOn = true;
+    const ev = f.update(0.05, still);
+    expect(ev.some((e) => e.t === 'found' && e.id === h.id)).toBe(true);
+    const p = f.interact();
+    expect(p?.t).toBe('pickup');
+    expect(f.collected.has(h.id)).toBe(true);
+    expect(f.hiddenNearby()).toBe(false);
+  });
+
+  it('もう拾ったものは、次に来ても出てこない', () => {
+    const h = SCHOOL.hidden![0];
+    const f = new FieldState(SCHOOL, 'morning', [h.id]);
+    f.pos = [h.pos[0] + 0.8, h.pos[1] - 0.6];
+    f.lensOn = true;
+    expect(f.update(0.05, still).some((e) => e.t === 'found')).toBe(false);
+  });
+
+  it('隠れた敵は戦いになる。どの隠し要素も、立てる場所から調べられる', () => {
+    for (const map of [SCHOOL, MANSION]) {
+      for (const h of map.hidden ?? []) {
+        if (h.kind === 'enemy') expect(GAME_DATA.encounters[h.encounter!], h.id).toBeTruthy();
+        const f = new FieldState(map, 'morning');
+        f.revealed.add(h.id);
+        let ok = false;
+        for (let dx = -1.5; dx <= 1.5 && !ok; dx += 0.25) {
+          for (let dz = -1.5; dz <= 1.5 && !ok; dz += 0.25) {
+            f.pos = [h.pos[0] + dx, h.pos[1] + dz];
+            const it = f.nearby();
+            if (free(f) && it?.kind === 'hidden' && it.def.id === h.id) ok = true;
+          }
+        }
+        expect(ok, h.id).toBe(true);
+        if (h.kind === 'enemy') expect(f.interact()?.t).toBe('hiddenBattle');
+      }
+    }
+  });
+});
