@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils, type VRM } from '@pixiv/three-vrm';
 import '../battleView/battle.css';
 import '../ui/menus.css';
-import { Battle } from '../battle/battle';
+import { Battle, type Opening } from '../battle/battle';
 import { runAuto } from '../battle/auto';
 import { makeRng } from '../battle/rng';
 import type { EncounterDef } from '../battle/types';
@@ -20,8 +20,14 @@ import { ITEMS } from '../data/items';
 import { esc, matsHtml, oddsText, slotName, stars } from '../ui/fmt';
 import { GrowthView } from '../ui/growthView';
 import { watchOrientation } from '../ui/orientation';
+import '../fieldView/field.css';
+import { MANSION } from '../data/maps';
+import { FieldState, type FieldEvent } from '../field/logic';
+import type { Vec2 } from '../field/types';
+import { FieldHud } from '../fieldView/fieldHud';
+import { FieldView } from '../fieldView/fieldView';
 
-// 段階3：先行版。拠点 → 戦う → ごほうび → 育てる → 前に負けたボスに勝つ、をくり返す。
+// 拠点 → 忍び込む（歩く場所）／材料の戦い → ごほうび → 育てる → 前に負けたボスに勝つ、をくり返す。
 // 保存はブラウザの中（localStorage）。
 // キャラは VRM があれば VRM（4人とも同じモデル）、無ければ仮の形で動く。
 //   開発サーバー：public/models/sample-a.vrm があれば自動で読む（?novrm で読まない）
@@ -178,6 +184,7 @@ export function start(): void {
         showHub(note);
       }
       else if (t.dataset.act === 'grow') openGrowth();
+      else if (t.dataset.act === 'infiltrate') startInfiltration();
       else if (t.dataset.act === 'vrm') picker.click();
       else if (t.dataset.act === 'reset') {
         if (window.confirm('育てたデータをすべて消して、はじめからにします。よいですか？')) {
@@ -222,8 +229,12 @@ export function start(): void {
       const hint = locked ? `<span class="muted">　${['I', 'II', 'III', 'IV'][locked.tier! - 2]} に勝つと ${['I', 'II', 'III', 'IV'][locked.tier! - 1]} に挑める</span>` : '';
       return card(tiers.find((e) => e.tier === cur)!, `<div class="tiers">段階 ${btns}${hint}</div>`);
     });
-    const bosses = all.filter((e) => e.kind === 'boss').map((e) => card(e));
-    return [...farms, ...bosses].join('');
+    // 忍び込む（歩く場所）。ボスは、一度扉の前まで行くと拠点からも挑める
+    const infiltrate = `<div class="enc boss"><div class="grow"><div class="ename2">${MANSION.name}に忍び込む</div>
+        <div class="edesc">見回りとカメラを影でかわし、端末をハッキングして奥へ。最後に「${esc(MANSION.boss.name)}」。10〜20分<br>おすすめ戦力 ${GAME_DATA.encounters[MANSION.boss.encounter].recommend}</div></div>
+        <button class="btn gold" data-act="infiltrate">忍び込む</button></div>`;
+    const bosses = all.filter((e) => e.kind === 'boss' && save.flags[`${e.id}_reached`]).map((e) => card(e));
+    return [infiltrate, ...farms, ...bosses].join('');
   }
 
   function openGrowth(charId?: string): void {
@@ -232,19 +243,23 @@ export function start(): void {
   }
 
   // ---- 戦い ----
-  async function runBattle(encId: string): Promise<void> {
+  /** 歩く場所からの戦いなら、その見回り（ボスなら null）と始まり方 */
+  type FieldCtx = { opening: Opening; patrol: string | null };
+
+  async function runBattle(encId: string, fctx?: FieldCtx): Promise<void> {
     closeHub();
     hud.closeOverlay();
     ctrl?.stop();
     const enc = GAME_DATA.encounters[encId];
-    ctrl = new BattleController({ data: GAME_DATA, stage, hud, clock, party: partyFor(save), encounter: encId, vrms, auto, speed });
+    ctrl = new BattleController({ data: GAME_DATA, stage, hud, clock, party: partyFor(save), encounter: encId, vrms, auto, speed, opening: fctx?.opening });
     const res = await ctrl.run();
     ctrl = null;
     if (res.result === 'retreat') {
+      if (fctx) endInfiltration();
       showHub('撤退しました');
       return;
     }
-    finish(enc, res);
+    finish(enc, res, false, fctx);
   }
 
   /** 開発サーバーの確かめ用だけ：自動で一瞬で終わらせる（画面のボタンはない） */
@@ -255,7 +270,7 @@ export function start(): void {
     finish(enc, { result: phase === 'won' ? 'won' : 'lost', turns: b.turnCount, biggest: 0, synergies: 0, seconds: 0, totalDamage: 0 }, true);
   }
 
-  function finish(enc: EncounterDef, res: RunResult, skipped = false): void {
+  function finish(enc: EncounterDef, res: RunResult, skipped = false, fctx?: FieldCtx): void {
     closeHub();
     const won = res.result === 'won';
     const beforeLevels = Object.fromEntries(save.party.map((id) => [id, save.chars[id].level]));
@@ -303,19 +318,30 @@ export function start(): void {
         : !won
           ? '<p style="text-align:center">守りが崩れた敵は1回休み。相性を使うと大きな数字が出る。</p>'
           : '';
+    // 歩く場所の戦いなら、終わり方がちがう
+    const inField = !!fctx;
+    const escaped = inField && won && fctx!.patrol === null; // ボスに勝って脱出
+    if (inField && (!won || escaped)) endInfiltration();
+    const title = escaped ? '脱出成功！' : inField && !won ? '捕まってしまった…' : won ? '勝った！' : '負けた…';
+    const buttons =
+      inField && won && !escaped
+        ? '<button class="choice" data-act="continue"><b>探索にもどる</b><span>見つからないように奥へ</span></button>'
+        : inField
+          ? `<button class="choice" data-act="grow"><b>育てる</b><span>材料を使って強くする</span></button>
+             <button class="choice" data-act="hub"><b>拠点へ</b><span>${escaped ? '金庫の中身を持ち帰った' : 'もう一度忍び込もう'}</span></button>`
+          : `<button class="choice" data-act="again"><b>再挑戦</b><span>${esc(enc.name)}</span></button>
+             <button class="choice" data-act="grow"><b>育てる</b><span>材料を使って強くする</span></button>
+             <button class="choice" data-act="hub"><b>拠点へ</b><span>ほかの相手を選ぶ</span></button>`;
     const p = hud.overlay(
-      `<h1>${won ? '勝った！' : '負けた…'}</h1>
+      `<h1>${title}</h1>
        ${revenge ? '<div class="celebrate">前に負けた番人に、勝った！ 育てた成果だ！</div>' : ''}
        <p style="text-align:center">${stats}</p>
        ${rewardHtml}${advice}
-       <div class="choices" style="margin-top:10px">
-         <button class="choice" data-act="again"><b>再挑戦</b><span>${esc(enc.name)}</span></button>
-         <button class="choice" data-act="grow"><b>育てる</b><span>材料を使って強くする</span></button>
-         <button class="choice" data-act="hub"><b>拠点へ</b><span>ほかの相手を選ぶ</span></button>
-       </div>`,
+       <div class="choices" style="margin-top:10px">${buttons}</div>`,
       `result ${won ? 'won' : 'lost'}`,
     );
     p.querySelector('[data-act="again"]')?.addEventListener('click', () => (skipped ? skipBattle(enc.id) : void runBattle(enc.id)));
+    p.querySelector('[data-act="continue"]')?.addEventListener('click', () => resumeField(fctx!.patrol!));
     p.querySelector('[data-act="grow"]')?.addEventListener('click', () => {
       hud.closeOverlay();
       hud.clearBattle();
@@ -324,6 +350,166 @@ export function start(): void {
     });
     p.querySelector('[data-act="hub"]')?.addEventListener('click', () => showHub());
   }
+
+  // ---- 歩く場所（忍び込む） ----
+  interface FieldRun {
+    state: FieldState;
+    view: FieldView;
+    fh: FieldHud;
+    hackT: number | null; // ハッキング中の時間
+    busy: boolean; // 戦いの間は止める
+    mapTick: number;
+  }
+  let fieldRun: FieldRun | null = null;
+  const HACK_TIME = 1.2;
+
+  function startInfiltration(): void {
+    closeHub();
+    hud.closeOverlay();
+    hud.clearBattle();
+    stage.clearEnemies();
+    const state = new FieldState(MANSION);
+    const view = new FieldView(state, CHARACTERS[save.party[0]].look, vrms?.[0] ?? null);
+    view.resize(window.innerWidth, window.innerHeight);
+    const fh = new FieldHud({ onAttack: fieldAttack, onInteract: fieldInteract, onMenu: fieldMenu });
+    fieldRun = { state, view, fh, hackT: null, busy: false, mapTick: 0 };
+    fh.banner(`${MANSION.name}に忍び込んだ。影の中なら見つからない`, 'info');
+  }
+
+  function endInfiltration(): void {
+    if (!fieldRun) return;
+    fieldRun.fh.destroy();
+    fieldRun.view.dispose();
+    fieldRun = null;
+  }
+
+  function fieldBattle(encounter: string, opening: Opening, patrol: string | null): void {
+    const r = fieldRun;
+    if (!r) return;
+    r.busy = true;
+    r.hackT = null;
+    r.fh.setHack(null);
+    r.fh.root.style.display = 'none';
+    void runBattle(encounter, { opening, patrol });
+  }
+
+  function resumeField(patrol: string): void {
+    const r = fieldRun;
+    if (!r) return showHub();
+    hud.closeOverlay();
+    hud.clearBattle();
+    stage.clearEnemies();
+    stage.showParty([], null); // 戦いの味方を片づけ、VRM を歩く場所にもどす
+    r.view.attachVrm(vrms?.[0] ?? null);
+    r.state.defeat(patrol);
+    r.busy = false;
+    r.fh.root.style.display = '';
+    r.fh.banner('見回りを倒した。奥へ進もう', 'info');
+  }
+
+  function fieldAttack(): void {
+    const r = fieldRun;
+    if (!r || r.busy || r.hackT !== null) return;
+    const ev = r.state.attack();
+    if (ev.t === 'battle') fieldBattle(ev.encounter, ev.opening, ev.patrol);
+  }
+
+  function fieldInteract(): void {
+    const r = fieldRun;
+    if (!r || r.busy || r.hackT !== null) return;
+    const it = r.state.nearby();
+    if (!it) return;
+    if (it.kind === 'terminal') {
+      r.hackT = 0; // 少し時間がかかる（その間に見つかることもある）
+      return;
+    }
+    if (it.kind === 'boss') {
+      save.flags[`${MANSION.boss.encounter}_reached`] = 1;
+      persist();
+      fieldBattle(MANSION.boss.encounter, 'normal', null);
+      return;
+    }
+    handleFieldEvent(r.state.interact());
+  }
+
+  function fieldMenu(): void {
+    if (!fieldRun || fieldRun.busy) return;
+    if (!window.confirm('拠点へもどりますか？（宝箱で手に入れた物はそのまま）')) return;
+    endInfiltration();
+    showHub();
+  }
+
+  /** 歩く場所で起きたことを見せる。戦いになったら true */
+  function handleFieldEvent(e: FieldEvent | null): boolean {
+    const r = fieldRun;
+    if (!r || !e) return false;
+    switch (e.t) {
+      case 'spotted':
+        r.fh.banner('見つかった！ 逃げるか、影に隠れよう', 'bad');
+        break;
+      case 'alarm':
+        r.fh.banner('カメラに見つかった！ 見回りが来る', 'bad');
+        break;
+      case 'lost':
+        r.fh.banner('見失ったようだ…', 'info');
+        break;
+      case 'chest': {
+        for (const [k, n] of Object.entries(e.items)) save.items[k] = (save.items[k] ?? 0) + n;
+        persist();
+        const list = Object.entries(e.items).map(([k, n]) => `${ITEMS[k].name}×${n}`).join('・');
+        r.fh.banner(`宝箱：${list}`, 'good');
+        break;
+      }
+      case 'hacked':
+        r.fh.banner('ハッキング成功！ カメラが止まり、扉が開いた', 'good');
+        break;
+      case 'battle':
+        fieldBattle(e.encounter, e.opening, e.patrol);
+        return true;
+      case 'miss':
+      case 'boss':
+        break;
+    }
+    return false;
+  }
+
+  function fieldTick(real: number): void {
+    const r = fieldRun!;
+    r.view.yaw += r.fh.takeYaw();
+    let move: Vec2 = [0, 0];
+    if (r.hackT === null) {
+      const [sx, sy] = r.fh.stick();
+      move = r.view.stickToWorld(sx, sy);
+    }
+    const evs = r.state.update(real, { move, run: r.fh.running() });
+    for (const e of evs) {
+      if (e.t === 'spotted' || e.t === 'alarm') {
+        // 見つかったらハッキングは途中で止まる
+        r.hackT = null;
+        r.fh.setHack(null);
+      }
+      if (handleFieldEvent(e)) return;
+    }
+    if (r.hackT !== null) {
+      r.hackT += real;
+      r.fh.setHack(Math.min(1, r.hackT / HACK_TIME));
+      if (r.hackT >= HACK_TIME) {
+        r.hackT = null;
+        r.fh.setHack(null);
+        handleFieldEvent(r.state.interact());
+      }
+    }
+    const hidden = r.state.inShadow();
+    const speed = Math.min(1, Math.hypot(move[0], move[1]));
+    r.view.update(real, speed * (r.fh.running() ? 1 : 0.6), hidden);
+    r.fh.setArea(r.state.areaName());
+    r.fh.setHidden(hidden);
+    const it = r.state.nearby();
+    r.fh.setInteract(it ? (it.kind === 'chest' ? '宝箱を開ける' : it.kind === 'terminal' ? 'ハッキング' : '番人に挑む') : null);
+    if (++r.mapTick % 3 === 0) r.fh.drawMap(r.state);
+    stage.renderer.render(r.view.scene, r.view.camera);
+  }
+  window.addEventListener('resize', () => fieldRun?.view.resize(window.innerWidth, window.innerHeight));
 
   // ---- 毎コマ ----
   const perf = import.meta.env.DEV || params.has('perf') ? new PerfHud(stage.renderer) : null;
@@ -334,6 +520,11 @@ export function start(): void {
   stage.renderer.setAnimationLoop(() => {
     const real = Math.min(timer.getDelta(), 0.1);
     if (paused) return;
+    if (fieldRun && !fieldRun.busy) {
+      fieldTick(real);
+      perf?.tick();
+      return;
+    }
     const dt = clock.update(real);
     stage.update(dt);
     hud.follow(stage);
@@ -342,7 +533,7 @@ export function start(): void {
   });
 
   // 開発サーバーだけ：確かめ用に、戦いを一瞬で終わらせる（公開ページには入らない）
-  if (import.meta.env.DEV) Object.assign(window, { __kaito: { skip: skipBattle, save: () => save, invest: () => autoInvest(save, rng), hud } });
+  if (import.meta.env.DEV) Object.assign(window, { __kaito: { field: () => fieldRun, skip: skipBattle, save: () => save, invest: () => autoInvest(save, rng), hud } });
 
   showHub(loaded.reset ? '保存データが読めなかったので、はじめからにしました' : '');
   // 開発サーバーでは見本の VRM を自動で読む（公開ページには置いていないので、無ければ仮の形のまま）

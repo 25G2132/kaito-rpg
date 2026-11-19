@@ -137,3 +137,20 @@ describe('黒金邸のデータ', () => {
     expect(f.pos[0]).toBeLessThan(16);
   });
 });
+
+describe('黒金邸：端末は影の中', () => {
+  it('どの端末も、影の中に立ったまま調べられる（隠れたままハッキングできる）', () => {
+    for (const t of MANSION.terminals) {
+      const f = new FieldState(MANSION);
+      // 端末のまわりで、影の中かつ調べられる場所があるか
+      let ok = false;
+      for (let dx = -1.5; dx <= 1.5 && !ok; dx += 0.25) {
+        for (let dz = -1.5; dz <= 1.5 && !ok; dz += 0.25) {
+          f.pos = [t.pos[0] + dx, t.pos[1] + dz];
+          if (f.inShadow() && f.nearby()?.kind === 'terminal' && !f.solids().some((r) => inRect(f.pos, r))) ok = true;
+        }
+      }
+      expect(ok, t.id).toBe(true);
+    }
+  });
+});

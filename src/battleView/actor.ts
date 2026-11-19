@@ -26,6 +26,8 @@ export class ActorView {
   flash = 0; // 当たったときに白く光る
   down = 0; // 倒れる（0〜1）
   highlight = 0; // 番が来ている
+  walk = 0; // 歩く速さ（0〜1。歩く場所で使う）
+  private walkPhase = 0;
 
   constructor(look: LookDef, facing: 1 | -1) {
     this.facing = facing;
@@ -68,7 +70,9 @@ export class ActorView {
 
   update(t: number, dt: number): void {
     const tt = t + this.phase;
-    const bob = this.floating ? Math.sin(tt * 2.2) * 0.1 + 0.15 : 0;
+    this.walkPhase += dt * (5 + 5 * this.walk) * (this.walk > 0.02 ? 1 : 0);
+    const step = this.walk > 0.02 ? Math.abs(Math.sin(this.walkPhase)) * 0.07 * this.walk : 0;
+    const bob = (this.floating ? Math.sin(tt * 2.2) * 0.1 + 0.15 : 0) + step;
     const shakeX = this.shake > 0 ? Math.sin(tt * 90) * 0.08 * this.shake : 0;
     this.body.position.set(this.offset.x + shakeX, this.offset.y + bob, this.offset.z);
     // 倒れる：味方は後ろに倒れる、敵は沈んで小さくなる
@@ -82,7 +86,7 @@ export class ActorView {
       m.emissiveIntensity = this.flash * 1.2 + this.highlight * 0.06;
     }
     if (this.vrm) {
-      poseVrm(this.vrm, tt, this.armRaise, this.ultPose);
+      poseVrm(this.vrm, tt, this.armRaise, this.ultPose, this.walk, this.walkPhase);
       this.vrm.update(dt);
     } else if (!this.floating) {
       // 仮の形の呼吸
@@ -99,7 +103,7 @@ export class ActorView {
   }
 }
 
-function poseVrm(vrm: VRM, t: number, arm: number, ult: number): void {
+function poseVrm(vrm: VRM, t: number, arm: number, ult: number, walk = 0, wp = 0): void {
   const h = vrm.humanoid;
   const breath = Math.sin(t * 2.2);
   const lerp = (a: number, b: number, p: number) => a + (b - a) * p;
@@ -112,6 +116,16 @@ function poseVrm(vrm: VRM, t: number, arm: number, ult: number): void {
   h.getNormalizedBoneNode('rightUpperArm')?.rotation.set(0, lerp(0, -0.8, arm * (1 - ult)), lerp(lerp(rightDown, -0.3, arm), -0.9, ult));
   h.getNormalizedBoneNode('leftLowerArm')?.rotation.set(0, -0.3, 0);
   h.getNormalizedBoneNode('rightLowerArm')?.rotation.set(0, lerp(0.3, 0, arm), 0);
+  // 歩く：足を前後に振り、腕を逆に振る
+  const sw = Math.sin(wp) * 0.7 * walk;
+  h.getNormalizedBoneNode('leftUpperLeg')?.rotation.set(sw, 0, 0);
+  h.getNormalizedBoneNode('rightUpperLeg')?.rotation.set(-sw, 0, 0);
+  h.getNormalizedBoneNode('leftLowerLeg')?.rotation.set(-Math.max(0, -Math.sin(wp)) * 0.9 * walk, 0, 0);
+  h.getNormalizedBoneNode('rightLowerLeg')?.rotation.set(-Math.max(0, Math.sin(wp)) * 0.9 * walk, 0, 0);
+  if (walk > 0.02 && arm < 0.01 && ult < 0.01) {
+    h.getNormalizedBoneNode('leftUpperArm')?.rotation.set(-sw * 0.8, 0, leftDown);
+    h.getNormalizedBoneNode('rightUpperArm')?.rotation.set(sw * 0.8, 0, rightDown);
+  }
 }
 
 // ---------- 仮の形 ----------

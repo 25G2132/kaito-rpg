@@ -1,4 +1,4 @@
-import { Battle, type BattleEvent } from '../battle/battle';
+import { Battle, type BattleEvent, type Opening } from '../battle/battle';
 import { chooseCommand, readyUltimates } from '../battle/auto';
 import type { GameData, PartyMember } from '../battle/types';
 import type { GameClock } from './clock';
@@ -48,6 +48,7 @@ export class BattleController {
     encounter: string;
     vrms: VRM[] | null;
     auto: boolean;
+    opening?: Opening;
     speed: number;
   }) {
     this.data = opts.data;
@@ -56,7 +57,7 @@ export class BattleController {
     this.clock = opts.clock;
     this.auto = opts.auto;
     this.speed = opts.speed;
-    this.battle = new Battle(opts.data, { party: opts.party, encounter: opts.encounter, seed: Date.now() });
+    this.battle = new Battle(opts.data, { party: opts.party, encounter: opts.encounter, seed: Date.now(), opening: opts.opening });
     this.stage.setAllies(this.battle, opts.vrms);
     this.stage.setEnemies(this.battle, true);
     this.hud.build(this.battle);
@@ -138,7 +139,9 @@ export class BattleController {
 
   async run(): Promise<RunResult> {
     const b = this.battle;
-    await this.clock.sleep(0.6);
+    if (b.opening === 'ambush') this.hud.banner('先制！ 敵の番が遅れ、守りが削れた', 'wave');
+    if (b.opening === 'surprised') this.hud.banner('不意打ち！ 敵が先に動く', 'warn');
+    await this.clock.sleep(b.opening === 'normal' ? 0.6 : 1.2);
     while (!b.ended && !this.stopped) {
       await this.flushUlts();
       if (b.ended || this.stopped) break;

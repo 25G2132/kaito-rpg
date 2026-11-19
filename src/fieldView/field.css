@@ -1,0 +1,181 @@
+/* 歩く場所の操作と表示。横画面のスマホに合わせる。押すものは 48px 以上 */
+
+.fhud {
+  position: fixed;
+  inset: 0;
+  z-index: 12;
+  font-family: system-ui, -apple-system, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+  color: #eef0f8;
+  pointer-events: none;
+}
+.fhud button {
+  font-family: inherit;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  pointer-events: auto;
+  color: #fff;
+}
+.fhud-touch {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+  touch-action: none;
+}
+.stick {
+  position: absolute;
+  width: 120px;
+  height: 120px;
+  margin: -60px 0 0 -60px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.06);
+  display: none;
+}
+.stick.on {
+  display: block;
+}
+.knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.55);
+  transform: translate(-50%, -50%);
+}
+.farea {
+  position: absolute;
+  top: max(8px, env(safe-area-inset-top));
+  left: max(10px, env(safe-area-inset-left));
+  font-size: 15px;
+  font-weight: 900;
+  text-shadow: 0 2px 0 #000;
+}
+.fhidden {
+  position: absolute;
+  top: calc(max(8px, env(safe-area-inset-top)) + 26px);
+  left: max(10px, env(safe-area-inset-left));
+  padding: 3px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 800;
+  background: rgba(120, 70, 220, 0.85);
+  display: none;
+}
+.fhidden.on {
+  display: block;
+}
+.fhack {
+  position: absolute;
+  left: 50%;
+  top: 30%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 10px;
+  background: rgba(10, 30, 40, 0.92);
+  border: 1px solid #1ec8ff;
+  font-weight: 800;
+  font-size: 14px;
+  text-align: center;
+  min-width: 200px;
+}
+.fhack .bar {
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  overflow: hidden;
+}
+.fhack .bar i {
+  display: block;
+  height: 100%;
+  background: #1ec8ff;
+}
+.fmini {
+  position: absolute;
+  top: max(8px, env(safe-area-inset-top));
+  right: calc(max(8px, env(safe-area-inset-right)) + 82px);
+  width: 150px;
+  height: 105px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+.fbtn {
+  position: absolute;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  background: radial-gradient(circle at 40% 30%, #3a4566, #171c2e);
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 0;
+  line-height: 1.15;
+}
+.fbtn b {
+  display: block;
+  font-size: 15px;
+}
+.fbtn small {
+  display: block;
+  font-size: 9px;
+  opacity: 0.85;
+  padding: 0 6px;
+}
+.fmenu {
+  top: max(8px, env(safe-area-inset-top));
+  right: max(8px, env(safe-area-inset-right));
+  width: 72px;
+  height: 44px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 800;
+}
+.fatk {
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  width: 92px;
+  height: 92px;
+  border-color: #d4486a;
+}
+.fint {
+  right: calc(max(16px, env(safe-area-inset-right)) + 104px);
+  bottom: max(24px, env(safe-area-inset-bottom));
+  width: 84px;
+  height: 84px;
+  border-color: #1ec8ff;
+  animation: pulse 0.8s infinite alternate;
+}
+.frun {
+  right: max(24px, env(safe-area-inset-right));
+  bottom: calc(max(16px, env(safe-area-inset-bottom)) + 104px);
+  width: 64px;
+  height: 64px;
+  font-size: 13px;
+  font-weight: 800;
+}
+.frun.on {
+  background: #d4486a;
+}
+.fbanner {
+  position: absolute;
+  left: 50%;
+  top: 22%;
+  transform: translateX(-50%);
+  padding: 8px 26px;
+  border-radius: 8px;
+  font-size: 22px;
+  font-weight: 900;
+  white-space: nowrap;
+  background: linear-gradient(90deg, transparent, rgba(16, 19, 32, 0.92) 18%, rgba(16, 19, 32, 0.92) 82%, transparent);
+  animation: fade 2.2s ease-out forwards;
+}
+.fbanner.good {
+  color: #ffd25a;
+}
+.fbanner.bad {
+  color: #ff6a85;
+}
+.fbanner.info {
+  font-size: 15px;
+}

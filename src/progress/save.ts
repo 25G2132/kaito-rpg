@@ -38,6 +38,7 @@ export interface SaveData {
   gear: GearPiece[];
   nextGearId: number;
   wins: Record<string, number>;
+  flags: Record<string, number>; // 進み具合のしるし（ボスの扉に着いた、など）
   losses: Record<string, number>;
 }
 
@@ -54,6 +55,7 @@ export function defaultSave(): SaveData {
     gear: [],
     nextGearId: 1,
     wins: {},
+    flags: {},
     losses: {},
   };
 }
@@ -93,6 +95,8 @@ export function validateSave(raw: unknown): SaveData | null {
     if (g.owner !== null && !(typeof g.owner === 'string' && g.owner in raw.chars)) return null;
   }
   if (!isCountMap(raw.wins) || !isCountMap(raw.losses)) return null;
+  if (raw.flags === undefined) raw.flags = {}; // しるしがなかったころの保存データ
+  if (!isCountMap(raw.flags)) return null;
   const save = raw as unknown as SaveData;
   // 新しいキャラが足されたときは、その人だけ初期値で足す
   for (const id of DEFAULT_PARTY) save.chars[id] ??= { level: START_LEVEL, exp: 0, asc: 0, skill: 1, weapon: null };

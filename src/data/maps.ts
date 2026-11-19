@@ -2,7 +2,7 @@ import type { MapDef, WallDef } from '../field/types';
 
 // 忍び込む建物。第1章は「黒金邸」（名前は仮）。
 // 庭 → 玄関ホール → 資料室 → 金庫室の前 → 番人（ボス）。
-// 影の中を通って見回りとカメラをかわし、端末をハッキングして扉を開ける。
+// 影の中を通って見回りとカメラをかわし、端末をハッキングして扉を開ける（端末は影の中にあり、隠れたままハッキングできる）。
 //
 //   z=0 ┌──────────┐
 //       │   庭      │
@@ -69,12 +69,13 @@ export const MANSION: MapDef = {
     // 資料室：本棚の陰
     { x: 19, z: 19.8, w: 7, d: 1.4 },
     { x: 19, z: 24, w: 7, d: 1.4 },
+    { x: 16.4, z: 25.6, w: 2.8, d: 2.4 }, // 端末の前の暗がり
     // 金庫室の前
     { x: 30.4, z: 26, w: 3, d: 2 },
   ],
   terminals: [
-    { id: 't1', pos: [1, 19.5], targets: ['c1', 'd1'], hint: 'ホールのカメラを止めて、資料室の扉を開ける' },
-    { id: 't2', pos: [17, 27], targets: ['c2', 'd2'], hint: '資料室のカメラを止めて、金庫室の扉を開ける' },
+    { id: 't1', pos: [0.8, 23], targets: ['c1', 'd1'], hint: 'ホールのカメラを止めて、資料室の扉を開ける' },
+    { id: 't2', pos: [16.9, 27.2], targets: ['c2', 'd2'], hint: '資料室のカメラを止めて、金庫室の扉を開ける' },
   ],
   cameras: [
     { id: 'c1', pos: [15.4, 12.6], dir: (3 * Math.PI) / 4, sweep: 0.6, period: 6, fov: 0.9, range: 10 },
@@ -83,7 +84,7 @@ export const MANSION: MapDef = {
   patrols: [
     { id: 'p_garden', encounter: 'field_garden', look: 'guard', route: [[3, 9.5], [13, 9.5], [13, 2.5], [8.5, 2.5]], speed: 1.5, fov: 1.6, range: 6 },
     { id: 'p_hall', encounter: 'field_hall', look: 'drone', route: [[4, 15], [12, 15], [12, 25], [4, 25]], speed: 1.7, fov: 1.5, range: 6.5 },
-    { id: 'p_archive', encounter: 'field_archive', look: 'robot', route: [[18, 17.5], [28, 17.5], [28, 26.8], [18, 26.8]], speed: 1.6, fov: 1.5, range: 6.5 },
+    { id: 'p_archive', encounter: 'field_archive', look: 'robot', route: [[18, 17.5], [28, 17.5], [28, 26.8], [20.2, 26.8], [20.2, 25.1], [18, 25.1]], speed: 1.6, fov: 1.5, range: 6.5 },
     { id: 'p_vault', encounter: 'field_vault', look: 'guard', route: [[32, 18], [38.5, 18], [38.5, 21]], speed: 1.8, fov: 1.6, range: 7 },
   ],
   chests: [
