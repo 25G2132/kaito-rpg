@@ -674,7 +674,7 @@ export function start(): void {
   });
 
   // 開発サーバーだけ：確かめ用に、戦いを一瞬で終わらせる（公開ページには入らない）
-  if (import.meta.env.DEV) Object.assign(window, { __kaito: { field: () => fieldRun, skip: skipBattle, save: () => save, invest: () => autoInvest(save, rng), hud } });
+  if (import.meta.env.DEV) Object.assign(window, { __kaito: { ctrl: () => ctrl, field: () => fieldRun, skip: skipBattle, save: () => save, invest: () => autoInvest(save, rng), hud } });
 
   // 昼なら学校から、夜なら拠点から始める
   if (save.phase === 'day') startSchool(loaded.reset ? '保存データが読めなかったので、はじめからにしました' : '');
