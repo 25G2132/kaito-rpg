@@ -85,20 +85,33 @@ export class Stage {
   }
 
   /** 味方を並べる（VRM があれば差しかえる） */
-  setAllies(b: Battle, vrms: VRM[] | null): void {
+  setAllies(b: Battle, vrms: (VRM | null)[] | null): void {
     this.showParty(b.allies.map((u) => b.charDef(u)!), vrms);
   }
 
   /** 味方だけを並べる（戦いの外でも使う）。前の味方は片づける */
-  showParty(defs: CharacterDef[], vrms: VRM[] | null): void {
+  showParty(defs: CharacterDef[], vrms: (VRM | null)[] | null): void {
     this.removeWhere((uid) => uid.startsWith('p'));
     defs.forEach((c, i) => {
       const a = new ActorView(c.look, 1);
       const [x, z] = PARTY_POS[i % PARTY_POS.length];
       a.root.position.set(x, 0, z);
+      a.root.visible = i < PARTY_POS.length; // うしろの人は控え（見せない）
       if (vrms?.[i]) a.setVrm(vrms[i]);
       this.add(`p${i}`, a);
     });
+  }
+
+  /** 入れかえ：入る人を、下がる人の立ち位置に出す */
+  swapActors(outUid: string, inUid: string): void {
+    const o = this.actors.get(outUid);
+    const i = this.actors.get(inUid);
+    if (!o || !i) return;
+    i.root.position.copy(o.root.position);
+    i.root.visible = true;
+    i.down = 0;
+    o.root.visible = false;
+    void this.clock.tween(0.35, (p) => (i.offset.y = Math.sin(p * Math.PI) * 0.5));
   }
 
   clearEnemies(): void {

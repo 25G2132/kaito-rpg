@@ -106,6 +106,7 @@ export interface CharacterDef {
   element: string;
   base: Stats; // レベル1の数字
   energyMax: number;
+  ultGame?: 'mash' | 'timing'; // 必殺技のタッチ遊び（連打／止める）
   aggro?: number; // 敵からのねらわれやすさ（ふつう 100）
   basic: SkillDef;
   skill: SkillDef;

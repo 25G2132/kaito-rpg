@@ -6,6 +6,7 @@ import type { Rng } from '../battle/rng';
 import { statsAtLevel } from '../battle/stats';
 import type { EncounterDef, Mods, PartyMember, Stats } from '../battle/types';
 import { CHARACTERS } from '../data/characters';
+import { ENEMIES } from '../data/enemies';
 import { SLOTS } from '../data/gear';
 import { BOOK_EXP } from '../data/items';
 import { WEAPONS } from '../data/weapons';
@@ -237,6 +238,36 @@ export function talk(save: SaveData, charId: string): TalkResult {
 /** 学校の時間：仲間と話した回数で進む（0回＝朝、1回＝昼休み、2回から＝放課後） */
 export function slotOf(talksToday: number): 'morning' | 'lunch' | 'after' {
   return talksToday <= 0 ? 'morning' : talksToday === 1 ? 'lunch' : 'after';
+}
+
+// ---------- 協力者と編成 ----------
+
+export const PARTY_MAX = 6;
+
+export type RecruitResult = { charId: string; isNew: true } | { charId: string; isNew: false; bonus: Record<string, number> };
+
+/** 説得で仲間になった敵を、協力者として迎える。もういれば、代わりに参考書 */
+export function recruitAlly(save: SaveData, enemyId: string): RecruitResult | null {
+  const charId = ENEMIES[enemyId]?.ally;
+  if (!charId || !CHARACTERS[charId]) return null;
+  if (save.chars[charId]) {
+    save.items.book = (save.items.book ?? 0) + 1;
+    return { charId, isNew: false, bonus: { book: 1 } };
+  }
+  // 仲間のいちばん低いレベルにそろえて迎える（すぐ戦えるように）
+  const level = Math.max(1, Math.min(...save.party.map((id) => save.chars[id]?.level ?? 1)));
+  const asc = LEVEL_CAPS.findIndex((cap) => cap >= level);
+  save.chars[charId] = { level, exp: 0, asc: Math.max(0, asc), skill: 1, weapon: null };
+  return { charId, isNew: true };
+}
+
+/** 編成を決める（1〜6人、持っているキャラ、重ならない）。前の4人が戦い、うしろは控え */
+export function setParty(save: SaveData, ids: string[]): boolean {
+  if (ids.length < 1 || ids.length > PARTY_MAX) return false;
+  if (new Set(ids).size !== ids.length) return false;
+  if (!ids.every((id) => save.chars[id] && CHARACTERS[id])) return false;
+  save.party = [...ids];
+  return true;
 }
 
 /** 夜になる（学校から帰る） */

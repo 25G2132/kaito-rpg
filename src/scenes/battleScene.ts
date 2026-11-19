@@ -14,13 +14,14 @@ import { GameClock } from '../battleView/clock';
 import { Hud } from '../battleView/hud';
 import { Stage } from '../battleView/stage';
 import { PerfHud } from '../dev/perfHud';
-import { goNight, sleep, slotOf, talk, talksToNext, TALKS_PER_DAY } from '../progress/growth';
+import { goNight, recruitAlly, sleep, slotOf, talk, talksToNext, TALKS_PER_DAY, type RecruitResult } from '../progress/growth';
 import { SLOT_NAMES, type NpcDef } from '../field/types';
 import { applyRewards, autoInvest, isUnlocked, partyFor, partyPower, recordLoss, rollRewards, type Reward } from '../progress/growth';
 import { defaultSave, loadSave, storeSave } from '../progress/save';
 import { ITEMS } from '../data/items';
 import { esc, matsHtml, oddsText, slotName, stars } from '../ui/fmt';
 import { GrowthView } from '../ui/growthView';
+import { openFormation } from '../ui/formationView';
 import { watchOrientation } from '../ui/orientation';
 import '../fieldView/field.css';
 import { MANSION, SCHOOL } from '../data/maps';
@@ -62,6 +63,7 @@ export function start(): void {
   const hud = new Hud(GAME_DATA, {
     onBasic: () => ctrl?.tapBasic(),
     onSkill: () => ctrl?.tapSkill(),
+    onPersuade: () => ctrl?.tapPersuade(),
     onUlt: (uid) => ctrl?.tapUlt(uid),
     onTarget: (uid) => ctrl?.tapTarget(uid),
     onAuto: () => {
@@ -123,6 +125,11 @@ export function start(): void {
     vrms = list;
     vrmLabel = label;
   }
+  /** キャラごとの VRM（見本の VRM は主人公たち4人ぶん読む。協力者は仮の形） */
+  const vrmOf = (id: string): VRM | null => {
+    const i = DEFAULT_PARTY.indexOf(id);
+    return i >= 0 ? (vrms?.[i] ?? null) : null;
+  };
   const picker = document.createElement('input');
   picker.type = 'file'; // accept は付けない（Android で .vrm が選べなくなることがある）
   picker.hidden = true;
@@ -154,7 +161,7 @@ export function start(): void {
     hud.closeOverlay();
     hud.clearBattle();
     stage.clearEnemies();
-    stage.showParty(save.party.map((id) => CHARACTERS[id]), vrms);
+    stage.showParty(save.party.map((id) => CHARACTERS[id]), save.party.map(vrmOf));
     const power = partyPower(save);
     const encs = encounterCards();
     const lostBoss = (save.losses.vault ?? 0) > 0 && !(save.wins.vault > 0);
@@ -171,6 +178,7 @@ export function start(): void {
       <div class="row"><div class="grow"><div class="hub-title">第1章　夜の金庫室</div>
         <div class="power">${save.day}日目の夜　チーム戦力 ${power}</div></div>
         <button class="btn" data-act="sleep">寝る<small>次の日の昼へ</small></button>
+        <button class="btn" data-act="party">編成<small>${save.party.length}人</small></button>
         <button class="btn gold" data-act="grow">育てる</button></div>
       ${notice}
       <div class="mats">${matsHtml(save.items)}</div>
@@ -189,6 +197,13 @@ export function start(): void {
         showHub(note);
       }
       else if (t.dataset.act === 'grow') openGrowth();
+      else if (t.dataset.act === 'party') {
+        closeHub();
+        openFormation(save, (changed) => {
+          if (changed) persist();
+          showHub(changed ? '編成を変えました' : '');
+        });
+      }
       else if (t.dataset.act === 'infiltrate') void transition(MANSION.name, '夜の屋敷に忍び込む', startInfiltration);
       else if (t.dataset.act === 'sleep') {
         sleep(save);
@@ -262,7 +277,7 @@ export function start(): void {
     hud.closeOverlay();
     ctrl?.stop();
     const enc = GAME_DATA.encounters[encId];
-    ctrl = new BattleController({ data: GAME_DATA, stage, hud, clock, party: partyFor(save), encounter: encId, vrms, auto, speed, opening: fctx?.opening });
+    ctrl = new BattleController({ data: GAME_DATA, stage, hud, clock, party: partyFor(save), encounter: encId, vrms: save.party.map(vrmOf), auto, speed, opening: fctx?.opening });
     const res = await ctrl.run();
     ctrl = null;
     if (res.result === 'retreat') {
@@ -278,7 +293,7 @@ export function start(): void {
     const enc = GAME_DATA.encounters[encId];
     const b = new Battle(GAME_DATA, { party: partyFor(save), encounter: encId, seed: Date.now() });
     const phase = runAuto(b);
-    finish(enc, { result: phase === 'won' ? 'won' : 'lost', turns: b.turnCount, biggest: 0, synergies: 0, seconds: 0, totalDamage: 0 }, true);
+    finish(enc, { result: phase === 'won' ? 'won' : 'lost', turns: b.turnCount, biggest: 0, synergies: 0, seconds: 0, totalDamage: 0, recruited: [...b.recruited] }, true);
   }
 
   function finish(enc: EncounterDef, res: RunResult, skipped = false, fctx?: FieldCtx): void {
@@ -287,9 +302,15 @@ export function start(): void {
     const beforeLevels = Object.fromEntries(save.party.map((id) => [id, save.chars[id].level]));
     const revenge = won && enc.kind === 'boss' && !(save.wins[enc.id] > 0) && (save.losses[enc.id] ?? 0) > 0;
     let reward: Reward | null = null;
+    const recruits: RecruitResult[] = [];
     if (won) {
       reward = rollRewards(enc, rng, save);
       applyRewards(save, reward, enc);
+      // 説得で仲間になった敵を、協力者として迎える
+      for (const e of res.recruited) {
+        const r = recruitAlly(save, e);
+        if (r) recruits.push(r);
+      }
     } else {
       recordLoss(save, enc);
     }
@@ -307,7 +328,7 @@ export function start(): void {
     const entries: string[] = [];
     let best = 0;
     if (reward) {
-      entries.push(`<span class="rw">経験値 +${reward.exp}<small>4人それぞれ</small></span>`);
+      entries.push(`<span class="rw">経験値 +${reward.exp}<small>仲間それぞれ</small></span>`);
       for (const [k, n] of Object.entries(reward.items)) {
         const d = ITEMS[k];
         entries.push(`<span class="rw"><i style="background:${d.color}"></i>${d.name} ×${n}</span>`);
@@ -315,6 +336,13 @@ export function start(): void {
       for (const g of [...reward.gear].sort((a, b) => a.rarity - b.rarity)) {
         best = Math.max(best, g.rarity);
         entries.push(`<span class="rw gear r${g.rarity}">${stars(g.rarity)}<small>${slotName(g.slot)}</small></span>`);
+      }
+      for (const r of recruits) {
+        const name = CHARACTERS[r.charId].name;
+        if (r.isNew) {
+          best = Math.max(best, 5);
+          entries.push(`<span class="rw gear r5">協力者<small>${name}（編成で連れて行ける）</small></span>`);
+        } else entries.push(`<span class="rw">${name}はもう仲間<small>参考書×1</small></span>`);
       }
     }
     const rewardHtml = reward
@@ -382,7 +410,7 @@ export function start(): void {
     hud.clearBattle();
     stage.clearEnemies();
     const state = new FieldState(MANSION);
-    const view = new FieldView(state, { playerLook: CHARACTERS[save.party[0]].look, vrm: vrms?.[0] ?? null });
+    const view = new FieldView(state, { playerLook: CHARACTERS.akari.look, vrm: vrmOf('akari') });
     view.resize(window.innerWidth, window.innerHeight);
     const fh = new FieldHud({ onAttack: fieldAttack, onInteract: fieldInteract, onMenu: fieldMenu });
     fieldRun = { state, view, fh, hackT: null, busy: false, talking: false, mapTick: 0, kind: 'mansion' };
@@ -399,8 +427,8 @@ export function start(): void {
     stage.showParty([], null); // VRM を学校の人にわたす
     const state = new FieldState(SCHOOL, slotOf(save.talksToday));
     const npcVrms: Record<string, VRM | null> = {};
-    save.party.forEach((id, i) => (npcVrms[id] = vrms?.[i] ?? null));
-    const view = new FieldView(state, { playerLook: CHARACTERS[save.party[0]].look, vrm: vrms?.[0] ?? null, day: true, npcVrms });
+    for (const id of DEFAULT_PARTY) npcVrms[id] = vrmOf(id);
+    const view = new FieldView(state, { playerLook: CHARACTERS.akari.look, vrm: vrmOf('akari'), day: true, npcVrms });
     view.resize(window.innerWidth, window.innerHeight);
     const fh = new FieldHud({ onAttack: () => {}, onInteract: fieldInteract, onMenu: schoolMenu }, { school: true, menuLabel: '下校' });
     fieldRun = { state, view, fh, hackT: null, busy: false, talking: false, mapTick: 0, kind: 'school' };
@@ -484,7 +512,7 @@ export function start(): void {
     hud.clearBattle();
     stage.clearEnemies();
     stage.showParty([], null); // 戦いの味方を片づけ、VRM を歩く場所にもどす
-    r.view.attachVrm(vrms?.[0] ?? null);
+    r.view.attachVrm(vrmOf('akari'));
     r.state.defeat(patrol);
     r.busy = false;
     r.fh.root.style.display = '';

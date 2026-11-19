@@ -1,4 +1,5 @@
 import type { CharacterDef } from '../battle/types';
+import { ALLIES } from './allies';
 
 // 味方のキャラ。名前はすべて仮（本当の名前は段階7で決める）。
 // キャラを足すときは、ここに1人ぶん書き足すだけでよい（自動戦闘もデータを見て動く）。
@@ -7,7 +8,7 @@ import type { CharacterDef } from '../battle/types';
 //   シンの「侵入ハック」で〔解析〕 → アカリの「紅蓮一閃」が2倍
 //   アカリの攻撃で〔燃焼〕       → ハヤテの「煽り風」が燃焼を2倍にして、すぐ燃やす
 
-export const CHARACTERS: Record<string, CharacterDef> = {
+const MAIN_CHARACTERS: Record<string, CharacterDef> = {
   akari: {
     id: 'akari',
     name: 'アカリ',
@@ -16,6 +17,7 @@ export const CHARACTERS: Record<string, CharacterDef> = {
     element: 'fire',
     base: { hp: 900, atk: 140, def: 60, spd: 104, critRate: 0.15, critDmg: 0.8 },
     energyMax: 120,
+    ultGame: 'mash',
     look: { shape: 'hero', color: '#ff6a3d' },
     basic: {
       id: 'akari_basic',
@@ -61,6 +63,7 @@ export const CHARACTERS: Record<string, CharacterDef> = {
     element: 'thunder',
     base: { hp: 800, atk: 90, def: 55, spd: 115, critRate: 0.05, critDmg: 0.5 },
     energyMax: 100,
+    ultGame: 'timing',
     look: { shape: 'hero', color: '#ffd84a', scale: 0.95 },
     basic: {
       id: 'shin_basic',
@@ -102,6 +105,7 @@ export const CHARACTERS: Record<string, CharacterDef> = {
     element: 'ice',
     base: { hp: 1100, atk: 80, def: 85, spd: 98, critRate: 0.05, critDmg: 0.5 },
     energyMax: 100,
+    ultGame: 'timing',
     aggro: 150,
     look: { shape: 'hero', color: '#6ad8ff' },
     basic: {
@@ -145,6 +149,7 @@ export const CHARACTERS: Record<string, CharacterDef> = {
     element: 'wind',
     base: { hp: 850, atk: 120, def: 55, spd: 108, critRate: 0.1, critDmg: 0.6 },
     energyMax: 110,
+    ultGame: 'mash',
     look: { shape: 'hero', color: '#5ef0a0', scale: 1.05 },
     basic: {
       id: 'hayate_basic',
@@ -180,6 +185,9 @@ export const CHARACTERS: Record<string, CharacterDef> = {
     },
   },
 };
+
+/** 主人公たち＋協力者（説得で仲間になった敵） */
+export const CHARACTERS: Record<string, CharacterDef> = { ...MAIN_CHARACTERS, ...ALLIES };
 
 /** 最初の4人の並び */
 export const DEFAULT_PARTY = ['akari', 'shin', 'yuki', 'hayate'];

@@ -455,3 +455,31 @@
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-10px); }
 }
+
+/* ---- 編成 ---- */
+.fslots {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+.fslot {
+  padding: 6px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  font-size: 12px;
+  text-align: center;
+  min-height: 40px;
+}
+.fslot small {
+  display: block;
+  font-size: 10px;
+  opacity: 0.7;
+}
+.fslot.benchslot {
+  border-style: dashed;
+}
+.fchar.sel {
+  border-color: #5ef0a0;
+  background: rgba(94, 240, 160, 0.12);
+}

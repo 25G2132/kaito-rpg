@@ -314,7 +314,7 @@ export class GrowthView {
   private bondPane(): string {
     const id = this.charId;
     const def = BONDS[id];
-    if (!def) return '<div class="card">主人公。昼の学校で仲間と話して絆を深めると、チームが強くなる。</div>';
+    if (!def) return id === 'akari' ? '<div class="card">主人公。昼の学校で仲間と話して絆を深めると、チームが強くなる。</div>' : '<div class="card">絆は、昼の学校で話せる仲間（シン・ユキ・ハヤテ）と深まる。</div>';
     const lv = bondOf(this.save, id);
     const next = talksToNext(this.save, id);
     const rows = def.rewards

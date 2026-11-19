@@ -80,7 +80,7 @@ const isCountMap = (x: unknown): x is Record<string, number> =>
 export function validateSave(raw: unknown): SaveData | null {
   if (!isObj(raw) || raw.v !== SAVE_VERSION) return null;
   if (!isInt(raw.chapter, 1, 99)) return null;
-  if (!Array.isArray(raw.party) || raw.party.length < 1 || raw.party.length > 4) return null;
+  if (!Array.isArray(raw.party) || raw.party.length < 1 || raw.party.length > 6 || new Set(raw.party).size !== raw.party.length) return null;
   if (!isObj(raw.chars)) return null;
   for (const id of raw.party) if (typeof id !== 'string' || !(id in raw.chars)) return null;
   for (const c of Object.values(raw.chars)) {

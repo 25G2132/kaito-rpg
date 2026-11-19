@@ -15,6 +15,7 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', html = ''):
 export interface HudHandlers {
   onBasic: () => void;
   onSkill: () => void;
+  onPersuade: () => void;
   onUlt: (uid: string) => void;
   onTarget: (uid: string) => void;
   onAuto: () => void;
@@ -38,6 +39,7 @@ export class Hud {
   private spBox = el('div', 'sp');
   private basicBtn = el('button', 'abtn basic');
   private skillBtn = el('button', 'abtn skill');
+  private persuadeBtn = el('button', 'abtn persuade');
   private fx = el('div', 'fx');
   private overlayBox: HTMLDivElement | null = null;
   private cards = new Map<string, HTMLButtonElement>();
@@ -55,7 +57,7 @@ export class Hud {
     btns.append(this.autoBtn, this.speedBtn, this.pauseBtn);
     top.append(btns, this.totalBox);
     const row = el('div', 'abtns');
-    row.append(this.spBox, this.basicBtn, this.skillBtn);
+    row.append(this.spBox, this.persuadeBtn, this.basicBtn, this.skillBtn);
     this.actions.append(this.sdesc, row);
     this.root.append(this.fx, this.turnbar, this.wave, top, this.party, this.actions);
     document.body.appendChild(this.root);
@@ -65,6 +67,7 @@ export class Hud {
     this.pauseBtn.addEventListener('click', () => this.h.onPause());
     this.basicBtn.addEventListener('click', () => this.h.onBasic());
     this.skillBtn.addEventListener('click', () => this.h.onSkill());
+    this.persuadeBtn.addEventListener('click', () => this.h.onPersuade());
   }
 
   destroy(): void {
@@ -111,8 +114,26 @@ export class Hud {
       this.party.appendChild(card);
       this.cards.set(u.uid, card);
     }
+    this.arrange(b);
     this.buildEnemies(b);
     this.syncAll(b);
+  }
+
+  /** カードの並び：前の4人（並び順）、そのあとに控え（小さなカード） */
+  arrange(b: Battle): void {
+    const sorted = [...b.allies].sort((x, y) => Number(x.bench) - Number(y.bench) || x.slot - y.slot);
+    for (const u of sorted) {
+      const card = this.cards.get(u.uid);
+      if (!card) continue;
+      card.classList.toggle('bench', u.bench);
+      this.party.appendChild(card);
+    }
+  }
+
+  /** 入れかえ：選んだ控えを光らせ、前のカードに「ここと入れかえ」の印 */
+  setSwapSel(uid: string | null): void {
+    this.party.classList.toggle('swapping', !!uid);
+    for (const [id, c] of this.cards) c.classList.toggle('swapsel', id === uid);
   }
 
   buildEnemies(b: Battle): void {
@@ -252,11 +273,15 @@ export class Hud {
   }
 
   /** 味方の番：技のボタンを出す（null で隠す） */
-  showCommand(b: Battle, u: Unit | null): void {
+  showCommand(b: Battle, u: Unit | null, target?: string | null): void {
     if (!u) {
       this.actions.classList.add('hidden');
       return;
     }
+    // 弱った敵をねらっていれば「説得」
+    const can = !!target && b.canPersuade(target);
+    this.persuadeBtn.style.display = can ? '' : 'none';
+    if (can) this.persuadeBtn.innerHTML = `<div><div class="n">説得</div><div class="k">${Math.round(b.persuadeChance(target!) * 100)}%</div></div>`;
     const s = b.skillsOf(u)!;
     this.basicBtn.innerHTML = `<div><div class="k">通常攻撃</div><div class="n">${s.basic.name}</div></div><span class="c">+1</span>`;
     this.skillBtn.innerHTML = `<div><div class="k">スキル</div><div class="n">${s.skill.name}</div></div><span class="c">−1</span>`;

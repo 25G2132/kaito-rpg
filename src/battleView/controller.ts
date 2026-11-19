@@ -1,5 +1,6 @@
 import { Battle, type BattleEvent, type Opening } from '../battle/battle';
-import { chooseCommand, readyUltimates } from '../battle/auto';
+import { autoSwap, chooseCommand, readyUltimates } from '../battle/auto';
+import { playUltGame } from './ultGame';
 import type { GameData, PartyMember } from '../battle/types';
 import type { GameClock } from './clock';
 import type { Hud } from './hud';
@@ -9,7 +10,7 @@ import type { VRM } from '@pixiv/three-vrm';
 // 戦いの計算（Battle）と画面（Stage・Hud）をつなぐ。
 // Battle が返す出来事を、順に動き・数字・演出にして見せる。
 
-type Input = { kind: 'basic' | 'skill' } | { kind: 'wake' };
+type Input = { kind: 'basic' | 'skill' } | { kind: 'wake' } | { kind: 'swap'; out: string; in: string } | { kind: 'persuade' };
 
 export interface RunResult {
   result: 'won' | 'lost' | 'retreat';
@@ -17,6 +18,7 @@ export interface RunResult {
   biggest: number;
   synergies: number;
   seconds: number; // かかった時間（一時停止の間は数えない）
+  recruited: string[]; // 説得で仲間になった敵の id
   totalDamage: number;
 }
 
@@ -30,6 +32,7 @@ export class BattleController {
   speed = 1;
   private target: string | null = null;
   private ultQueue: { uid: string; target?: string }[] = [];
+  private swapSel: string | null = null;
   private waiting: ((i: Input) => void) | null = null;
   private stopped = false;
   private paused = false;
@@ -46,7 +49,7 @@ export class BattleController {
     clock: GameClock;
     party: PartyMember[];
     encounter: string;
-    vrms: VRM[] | null;
+    vrms: (VRM | null)[] | null;
     auto: boolean;
     opening?: Opening;
     speed: number;
@@ -93,11 +96,29 @@ export class BattleController {
   tapBasic(): void {
     this.answer({ kind: 'basic' });
   }
+  tapPersuade(): void {
+    if (this.target && this.battle.canPersuade(this.target)) this.answer({ kind: 'persuade' });
+  }
   tapSkill(): void {
     if (this.battle.sp >= 1) this.answer({ kind: 'skill' });
   }
+  /** カードを押した：控えなら入れかえの選択、選んでいれば入れかえ、それ以外は必殺技 */
   tapUlt(uid: string): void {
     if (this.auto || this.paused) return;
+    const b = this.battle;
+    const u = b.unit(uid);
+    if (u?.bench) {
+      this.swapSel = this.swapSel === uid || !u.alive ? null : uid;
+      this.hud.setSwapSel(this.swapSel);
+      return;
+    }
+    if (this.swapSel) {
+      const sel = this.swapSel;
+      this.swapSel = null;
+      this.hud.setSwapSel(null);
+      if (b.canSwap(uid, sel)) this.answer({ kind: 'swap', out: uid, in: sel });
+      return;
+    }
     if (!this.battle.canUlt(uid) || this.ultQueue.some((q) => q.uid === uid)) return;
     this.ultQueue.push({ uid });
     this.refreshUlts();
@@ -108,6 +129,8 @@ export class BattleController {
     if (!u || !u.alive || u.side !== 'enemy') return;
     this.target = uid;
     this.hud.setTarget(uid);
+    // 味方の番なら、ねらいに合わせて「説得」のボタンを出しなおす
+    if (this.waiting && this.battle.phase === 'command' && !this.auto) this.hud.showCommand(this.battle, this.battle.active ?? null, uid);
   }
   toggleAuto(): void {
     this.auto = !this.auto;
@@ -154,6 +177,11 @@ export class BattleController {
       this.hud.setActive(actor.uid);
       this.stage.setActive(actor.uid);
       if (this.auto) {
+        const s = autoSwap(b);
+        if (s) {
+          await this.play(b.swap(s.out, s.in));
+          continue;
+        }
         for (const u of readyUltimates(b)) this.ultQueue.push(u);
         if (this.ultQueue.length) continue;
         const c = chooseCommand(b);
@@ -161,17 +189,28 @@ export class BattleController {
         await this.play(b.command(c.kind, c.target));
         continue;
       }
-      this.hud.showCommand(b, actor);
+      this.ensureTarget();
+      this.hud.showCommand(b, actor, this.target);
       const input = await new Promise<Input>((resolve) => (this.waiting = resolve));
       this.hud.showCommand(b, null);
+      this.swapSel = null;
+      this.hud.setSwapSel(null);
       if (input.kind === 'wake') continue;
+      if (input.kind === 'swap') {
+        await this.play(b.swap(input.out, input.in));
+        continue;
+      }
+      if (input.kind === 'persuade') {
+        await this.play(b.persuade(this.target!));
+        continue;
+      }
       this.ensureTarget();
       await this.play(b.command(input.kind, this.target ?? undefined));
     }
     this.hud.showCommand(b, null);
     const seconds = Math.round((performance.now() - this.startedAt - this.pausedTotal) / 1000);
     const result = this.stopped && !b.ended ? 'retreat' : b.phase === 'won' ? 'won' : 'lost';
-    return { result, turns: b.turnCount, biggest: this.biggest, synergies: this.synergies, seconds, totalDamage: this.hud.totalDamage };
+    return { result, turns: b.turnCount, biggest: this.biggest, synergies: this.synergies, seconds, totalDamage: this.hud.totalDamage, recruited: [...b.recruited] };
   }
 
   private async flushUlts(): Promise<void> {
@@ -179,7 +218,13 @@ export class BattleController {
       const q = this.ultQueue.shift()!;
       if (!this.battle.canUlt(q.uid)) continue;
       this.ensureTarget();
-      await this.play(this.battle.ultimate(q.uid, q.target ?? this.target ?? undefined));
+      // 自分で押した必殺技は、タッチ遊びの出来で強くなる（自動のときは遊ばない）
+      let boost = 1;
+      const u = this.battle.unit(q.uid)!;
+      const c = this.battle.charDef(u);
+      if (!this.auto && c) boost = await playUltGame(c.ultGame ?? 'mash', u.name, this.data.elements[u.element]?.color ?? '#fff');
+      if (!this.battle.canUlt(q.uid)) continue;
+      await this.play(this.battle.ultimate(q.uid, q.target ?? this.target ?? undefined, boost));
     }
     this.refreshUlts();
   }
@@ -382,6 +427,24 @@ export class BattleController {
         case 'warn': {
           hud.banner(e.text, 'warn');
           await this.clock.sleep(1.0);
+          break;
+        }
+        case 'swap': {
+          st.swapActors(e.out, e.in);
+          hud.arrange(b);
+          hud.syncAll(b);
+          hud.banner(`交代！ ${b.unit(e.out)?.name} → ${b.unit(e.in)?.name}`);
+          await this.clock.sleep(0.5);
+          break;
+        }
+        case 'persuade': {
+          const t = b.unit(e.target);
+          hud.label(st, e.target, e.ok ? '説得成功！' : '説得に失敗…', e.ok ? 'break' : 'warn', -40);
+          if (e.ok) {
+            hud.banner(`${t?.name}が協力者になった！`, 'wave');
+            st.burst(e.target, '#5ef0a0', 60, 1.3);
+          }
+          await this.clock.sleep(0.9);
           break;
         }
         case 'end':
