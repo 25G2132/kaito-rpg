@@ -192,6 +192,23 @@ describe('相性', () => {
   });
 });
 
+describe('戦いの始まり方', () => {
+  it('先に叩くと（ambush）、敵の番が遅れ、守りも少し削れる', () => {
+    const normal = new Battle(GAME_DATA, { party: party(), encounter: one('guard'), seed: 1 });
+    const ambush = new Battle(GAME_DATA, { party: party(), encounter: one('guard'), seed: 1, opening: 'ambush' });
+    expect(ambush.enemies[0].av).toBeGreaterThan(normal.enemies[0].av);
+    expect(ambush.enemies[0].toughness).toBeLessThan(normal.enemies[0].toughness);
+    // 敵が最初に動くまでに、味方は普通より多く動ける
+    const firstEnemy = (b: Battle) => b.turnOrder(12).findIndex((x) => x.startsWith('e'));
+    expect(firstEnemy(ambush)).toBeGreaterThan(firstEnemy(normal));
+  });
+
+  it('見つかってぶつかられると（surprised）、敵が先に動く', () => {
+    const b = new Battle(GAME_DATA, { party: party(), encounter: one('drone'), seed: 1, opening: 'surprised' });
+    expect(b.turnOrder(1)[0].startsWith('e')).toBe(true);
+  });
+});
+
 describe('敵の動き', () => {
   function bossTurn(b: Battle): BattleEvent[] {
     for (const u of b.allies) u.av = 99999;

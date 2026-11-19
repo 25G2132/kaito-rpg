@@ -1,0 +1,79 @@
+// 歩く場所（忍び込む建物）のデータの形。中身は src/data/maps.ts に書く。
+// 床は x と z の平面（メートル）。高さは見た目だけ。
+
+export type Vec2 = [number, number];
+
+/** 四角（x, z が小さいほうの角、w, d が幅と奥行き） */
+export interface Rect {
+  x: number;
+  z: number;
+  w: number;
+  d: number;
+}
+
+export interface WallDef extends Rect {
+  h?: number; // 高さ（見た目。生け垣は低い）
+  kind?: 'wall' | 'hedge' | 'shelf';
+}
+
+export interface DoorDef extends Rect {
+  id: string;
+  name: string;
+}
+
+/** 調べるとハッキングでき、カメラを止めたり扉を開けたりする */
+export interface TerminalDef {
+  id: string;
+  pos: Vec2;
+  targets: string[]; // 止めるカメラ・開ける扉の id
+  hint: string;
+}
+
+/** 監視カメラ。首を振りながら扇の形に見張る */
+export interface CameraDef {
+  id: string;
+  pos: Vec2;
+  dir: number; // 向き（ラジアン。0 が +x）
+  sweep: number; // 首を振る幅（片側、ラジアン）
+  period: number; // 首を振る周期（秒）
+  fov: number; // 見える角度（全体、ラジアン）
+  range: number;
+}
+
+/** 見回り。決まった道を歩き、見つけると追いかけてくる。触れると戦い */
+export interface PatrolDef {
+  id: string;
+  encounter: string;
+  look: string; // 見た目に使う敵の id
+  route: Vec2[];
+  speed: number;
+  fov: number;
+  range: number;
+}
+
+export interface ChestDef {
+  id: string;
+  pos: Vec2;
+  items: Record<string, number>;
+}
+
+export interface AreaDef extends Rect {
+  name: string;
+  floor: string; // 床の色
+}
+
+export interface MapDef {
+  id: string;
+  name: string;
+  start: Vec2;
+  startDir: number;
+  areas: AreaDef[];
+  walls: WallDef[];
+  doors: DoorDef[]; // はじめは閉まっている（ハッキングで開く）
+  shadows: Rect[]; // 影の中にいると見つからない
+  terminals: TerminalDef[];
+  cameras: CameraDef[];
+  patrols: PatrolDef[];
+  chests: ChestDef[];
+  boss: { pos: Vec2; encounter: string; name: string };
+}

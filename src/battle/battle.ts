@@ -106,10 +106,16 @@ export type BattleEvent =
   | { t: 'warn'; unit: string; text: string }
   | { t: 'end'; result: 'won' | 'lost' };
 
+/** 戦いの始まり方。ambush＝こちらが先に叩いた（敵の番が遅れ、守りも少し削れる）、surprised＝見つかってぶつかられた（敵が先に動く） */
+export type Opening = 'normal' | 'ambush' | 'surprised';
+export const OPENING_DELAY = 0.5; // 遅れる番の長さ（1回ぶんの待ち時間の割合）
+export const AMBUSH_TOUGHNESS = 0.25; // 先制で削れる守りの割合
+
 export interface BattleOptions {
   party: PartyMember[];
   encounter: string | EncounterDef;
   seed?: number;
+  opening?: Opening;
 }
 
 export class Battle {
@@ -121,6 +127,7 @@ export class Battle {
   sp = SP_START;
   wave = 0;
   phase: Phase = 'between';
+  opening: Opening = 'normal';
   activeId: string | null = null;
   turnCount = 0;
   private log: BattleEvent[] = [];
@@ -132,6 +139,16 @@ export class Battle {
     this.rng = makeRng(opts.seed ?? Date.now());
     this.allies = opts.party.map((m, i) => this.makeAlly(m, i));
     this.spawnWave(0);
+    this.opening = opts.opening ?? 'normal';
+    // 始まり方は、はじめの群れにだけ効く
+    if (this.opening === 'ambush') {
+      for (const e of this.enemies) {
+        e.av += OPENING_DELAY * actionLength(e.stats.spd);
+        e.toughness = Math.max(1, Math.round(e.toughness * (1 - AMBUSH_TOUGHNESS)));
+      }
+    } else if (this.opening === 'surprised') {
+      for (const a of this.allies) a.av += OPENING_DELAY * actionLength(a.stats.spd);
+    }
   }
 
   // ---------- 見るための関数 ----------

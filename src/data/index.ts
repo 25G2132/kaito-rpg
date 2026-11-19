@@ -40,6 +40,10 @@ const WAVES_ARCHIVE = [
   ['robot', 'guard', 'robot'],
 ];
 
+function field(id: string, name: string, level: number, waves: string[][], rewards: EncounterDef['rewards']): Record<string, EncounterDef> {
+  return { [id]: { id, name, desc: '', kind: 'field', level, waves, rewards, gearOdds: { 3: 55, 4: 38, 5: 7 } } };
+}
+
 export const ENCOUNTERS: Record<string, EncounterDef> = {
   ...farm('patrol', '夜の見回り', '参考書・部品・装備が出る', WAVES_PATROL, [
     { level: 12, recommend: 3500, gearOdds: { 2: 60, 3: 35, 4: 5 }, rewards: { exp: 150, items: { book: [1, 1], parts: [5, 8] }, gear: 1 } },
@@ -51,6 +55,11 @@ export const ENCOUNTERS: Record<string, EncounterDef> = {
     { level: 28, recommend: 7000, rewards: { exp: 220, items: { note: [1, 2], key: [1, 2], blueprint: [1, 1], parts: [3, 5] }, gear: 0 } },
     { level: 36, recommend: 10000, rewards: { exp: 300, items: { note: [2, 3], key: [2, 3], blueprint: [1, 2], parts: [4, 6] }, gear: 0 } },
   ]),
+  // 黒金邸の見回り（歩く場所で触れると戦い）。奥へ行くほど強い
+  ...field('field_garden', '庭の見回り', 18, [['guard', 'drone']], { exp: 150, items: { parts: [3, 5] }, gear: 0 }),
+  ...field('field_hall', 'ホールの見回り', 24, [['drone', 'guard', 'drone']], { exp: 200, items: { book: [1, 1], parts: [4, 6] }, gear: 1 }),
+  ...field('field_archive', '資料室の見回り', 29, [['robot', 'guard', 'robot']], { exp: 250, items: { note: [1, 1], parts: [5, 7] }, gear: 1 }),
+  ...field('field_vault', '金庫室の前の見回り', 32, [['guard', 'robot', 'guard']], { exp: 300, items: { key: [1, 1], parts: [6, 8] }, gear: 1 }),
   vault: {
     id: 'vault',
     name: '金庫室の番人',

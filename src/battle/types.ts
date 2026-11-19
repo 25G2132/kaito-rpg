@@ -142,7 +142,7 @@ export interface EncounterDef {
   desc: string;
   level: number; // 敵のレベル
   waves: string[][]; // 敵の id の並び（群れごと）
-  kind?: 'farm' | 'boss';
+  kind?: 'farm' | 'boss' | 'field'; // field＝歩く場所の見回り（拠点には出ない）
   group?: string; // 同じ材料の戦いの段階をまとめる名前
   tier?: number; // 段階（1＝I、2＝II…）
   unlock?: string; // この戦いに勝つと挑めるようになる
