@@ -116,7 +116,7 @@ export function raiseSkill(save: SaveData, charId: string): boolean {
 
 export function craftWeapon(save: SaveData, weaponId: string): boolean {
   const w = WEAPONS[weaponId];
-  if (!w || save.weapons.includes(weaponId) || (save.items.blueprint ?? 0) < w.cost) return false;
+  if (!w || w.gachaOnly || save.weapons.includes(weaponId) || (save.items.blueprint ?? 0) < w.cost) return false;
   save.items.blueprint -= w.cost;
   save.weapons.push(weaponId);
   return true;

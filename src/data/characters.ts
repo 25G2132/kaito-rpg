@@ -1,5 +1,6 @@
 import type { CharacterDef } from '../battle/types';
 import { ALLIES } from './allies';
+import { GACHA_CHARS } from './gachaChars';
 
 // 味方のキャラ。名前はすべて仮（本当の名前は段階7で決める）。
 // キャラを足すときは、ここに1人ぶん書き足すだけでよい（自動戦闘もデータを見て動く）。
@@ -187,7 +188,7 @@ const MAIN_CHARACTERS: Record<string, CharacterDef> = {
 };
 
 /** 主人公たち＋協力者（説得で仲間になった敵） */
-export const CHARACTERS: Record<string, CharacterDef> = { ...MAIN_CHARACTERS, ...ALLIES };
+export const CHARACTERS: Record<string, CharacterDef> = { ...MAIN_CHARACTERS, ...ALLIES, ...GACHA_CHARS };
 
 /** 最初の4人の並び */
 export const DEFAULT_PARTY = ['akari', 'shin', 'yuki', 'hayate'];

@@ -1,0 +1,103 @@
+import type { CharacterDef } from '../battle/types';
+
+// ガチャで出るキャラ（すべて仮。名前・見た目は段階7と1枚絵で決める）。
+// 主人公たちと相性が組めるよう、属性と状態を散らす（影・氷・雷）。
+
+export const GACHA_CHARS: Record<string, CharacterDef> = {
+  tsubaki: {
+    id: 'tsubaki',
+    name: 'ツバキ',
+    role: 'アタッカー（★5）',
+    profile: 'ガチャの仲間（仮）。夜の街に現れる謎の剣士。〔防御ダウン〕の敵に強い',
+    element: 'shadow',
+    rarity: 5,
+    base: { hp: 880, atk: 150, def: 58, spd: 106, critRate: 0.2, critDmg: 1.0 },
+    energyMax: 130,
+    ultGame: 'timing',
+    look: { shape: 'hero', color: '#a07cff', scale: 1.03 },
+    basic: { id: 'tsubaki_basic', name: '影縫い', kind: 'basic', target: 'oneFoe', desc: '敵1体にダメージと〔防御ダウン〕', effects: [{ kind: 'damage', mult: 1.0, toughness: 15 }, { kind: 'status', status: 'defdown', turns: 2 }] },
+    skill: {
+      id: 'tsubaki_skill',
+      name: '影走り',
+      kind: 'skill',
+      target: 'oneFoe',
+      desc: '敵1体に大ダメージ。〔解析〕中の敵には1.6倍。自分の番を25%早める',
+      effects: [
+        { kind: 'damage', mult: 2.0, toughness: 25, synergy: { status: 'exposed', mult: 1.6 } },
+        { kind: 'advance', pct: 0.25, to: 'self' },
+      ],
+    },
+    ult: {
+      id: 'tsubaki_ult',
+      name: '夜帳',
+      kind: 'ult',
+      target: 'oneFoe',
+      desc: '敵1体にとても大きなダメージ。〔防御ダウン〕中なら1.5倍',
+      effects: [{ kind: 'damage', mult: 4.0, toughness: 40, synergy: { status: 'defdown', mult: 1.5 } }],
+    },
+  },
+  minato: {
+    id: 'minato',
+    name: 'ミナト',
+    role: '支援（★4）',
+    profile: 'ガチャの仲間（仮）。図書室の主。味方を強める',
+    element: 'ice',
+    rarity: 4,
+    base: { hp: 950, atk: 85, def: 70, spd: 110, critRate: 0.05, critDmg: 0.5 },
+    energyMax: 110,
+    ultGame: 'timing',
+    look: { shape: 'hero', color: '#9ad8ff', scale: 0.97 },
+    basic: { id: 'minato_basic', name: '氷の栞', kind: 'basic', target: 'oneFoe', desc: '敵1体にダメージ', effects: [{ kind: 'damage', mult: 1.0, toughness: 10 }] },
+    skill: {
+      id: 'minato_skill',
+      name: '作戦メモ',
+      kind: 'skill',
+      target: 'allAllies',
+      desc: '味方全員に〔オーバークロック〕（攻撃力+30%）',
+      effects: [{ kind: 'status', status: 'overclock', turns: 2 }],
+    },
+    ult: {
+      id: 'minato_ult',
+      name: '白い章',
+      kind: 'ult',
+      target: 'allAllies',
+      desc: '味方全員を回復（15%）し、必殺技ゲージ +20',
+      effects: [{ kind: 'heal', targetPct: 0.15 }, { kind: 'energy', amount: 20 }],
+    },
+  },
+  rei: {
+    id: 'rei',
+    name: 'レイ',
+    role: '範囲（★4）',
+    profile: 'ガチャの仲間（仮）。放送部のエース。電気でまとめて攻める',
+    element: 'thunder',
+    rarity: 4,
+    base: { hp: 820, atk: 120, def: 55, spd: 112, critRate: 0.1, critDmg: 0.6 },
+    energyMax: 110,
+    ultGame: 'mash',
+    look: { shape: 'hero', color: '#ffe066' },
+    basic: { id: 'rei_basic', name: '火花', kind: 'basic', target: 'oneFoe', desc: '敵1体にダメージ', effects: [{ kind: 'damage', mult: 1.0, toughness: 10 }] },
+    skill: {
+      id: 'rei_skill',
+      name: '放電',
+      kind: 'skill',
+      target: 'blastFoes',
+      desc: 'ねらった敵ととなりにダメージ',
+      effects: [
+        { kind: 'damage', mult: 1.4, toughness: 20, to: 'main' },
+        { kind: 'damage', mult: 0.7, toughness: 10, to: 'adjacent' },
+      ],
+    },
+    ult: {
+      id: 'rei_ult',
+      name: '全館放送',
+      kind: 'ult',
+      target: 'allFoes',
+      desc: '敵全員にダメージと〔解析〕（1回の番）',
+      effects: [
+        { kind: 'damage', mult: 1.8, toughness: 20 },
+        { kind: 'status', status: 'exposed', turns: 1 },
+      ],
+    },
+  },
+};

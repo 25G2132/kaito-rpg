@@ -12,6 +12,7 @@ export const ITEMS: Record<string, ItemDef> = {
   note: { id: 'note', name: '技の手帳', desc: '技レベルを上げる', color: '#5ef0a0' },
   parts: { id: 'parts', name: '部品', desc: '装備を強くする', color: '#c9cfe0' },
   coin: { id: 'coin', name: 'おこづかい', desc: '街のお店で使う', color: '#ffe08a' },
+  stone: { id: 'stone', name: '月の石', desc: 'ガチャを引く（1回160）', color: '#b9a7ff' },
   blueprint: { id: 'blueprint', name: '設計図の切れ端', desc: '武器を作る', color: '#ff9a6a' },
 };
 

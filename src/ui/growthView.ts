@@ -249,6 +249,7 @@ export class GrowthView {
         note = `${holder ? `<span class="why">${CHARACTERS[holder].name}が使っている</span>　` : ''}${this.gain((x) => equipWeapon(x, id, w.id))}`;
       }
       if (w.owner && !mine && !owned) continue; // ほかの人の専用武器は、その人の画面で作る
+      if (w.gachaOnly && !owned) continue; // ガチャの武器は、持っていなければ出さない
       cards.push(`<div class="card row"><div class="grow"><b>${w.name}</b> <span class="muted">${label}</span><br>${esc(w.desc)}<br>${note}</div>${btn}</div>`);
     }
     return cards.join('');

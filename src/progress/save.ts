@@ -5,6 +5,7 @@ import { DEFAULT_PARTY } from '../data';
 import { SLOTS, type SlotId, type StatKey, STAT_NAMES } from '../data/gear';
 import { ITEMS } from '../data/items';
 import { WEAPONS } from '../data/weapons';
+import { START_STONES } from '../data/gacha';
 
 export const SAVE_KEY = 'kaito-rpg-save-v1';
 export const SAVE_VERSION = 1;
@@ -47,6 +48,7 @@ export interface SaveData {
   questState: Record<string, number>; // 頼みごと：1＝受けた、2＝解決
   questBase: Record<string, number>; // 頼みごと：受けたときの数
   daily: Record<string, number>; // その日だけの数（お店で買った数・つりの回数）。寝ると0
+  gacha: Record<string, number>; // ガチャ：★5・★4 が出てから引いた回数（天井）、引いた合計
   losses: Record<string, number>;
 }
 
@@ -58,7 +60,7 @@ export function defaultSave(): SaveData {
     chapter: 1,
     party: [...DEFAULT_PARTY],
     chars,
-    items: { book: 2 },
+    items: { book: 2, stone: START_STONES },
     weapons: [],
     gear: [],
     nextGearId: 1,
@@ -72,6 +74,7 @@ export function defaultSave(): SaveData {
     questState: {},
     questBase: {},
     daily: {},
+    gacha: {},
     losses: {},
   };
 }
@@ -127,6 +130,13 @@ export function validateSave(raw: unknown): SaveData | null {
   if (!isCountMap(raw.questState) || !isCountMap(raw.questBase)) return null;
   if (raw.daily === undefined) raw.daily = {};
   if (!isCountMap(raw.daily)) return null;
+  // ガチャがなかったころの保存データには、はじめの月の石（10回ぶん）を1回だけわたす
+  if (raw.gacha === undefined) {
+    raw.gacha = {};
+    const items = raw.items as Record<string, number>;
+    items.stone = (items.stone ?? 0) + START_STONES;
+  }
+  if (!isCountMap(raw.gacha)) return null;
   const save = raw as unknown as SaveData;
   // 新しいキャラが足されたときは、その人だけ初期値で足す
   for (const id of DEFAULT_PARTY) save.chars[id] ??= { level: START_LEVEL, exp: 0, asc: 0, skill: 1, weapon: null };

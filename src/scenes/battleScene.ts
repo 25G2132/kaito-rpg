@@ -23,6 +23,7 @@ import { esc, matsHtml, oddsText, slotName, stars } from '../ui/fmt';
 import { GrowthView } from '../ui/growthView';
 import { openFormation } from '../ui/formationView';
 import { openNotebook } from '../ui/notebookView';
+import { openGacha } from '../ui/gachaView';
 import { acceptQuest, completeQuest, questMark, questOf, questState } from '../progress/quests';
 import { watchOrientation } from '../ui/orientation';
 import '../fieldView/field.css';
@@ -182,6 +183,7 @@ export function start(): void {
       <div class="row"><div class="grow"><div class="hub-title">第1章　夜の金庫室</div>
         <div class="power">${save.day}日目の夜　チーム戦力 ${power}</div></div>
         <button class="btn" data-act="sleep">寝る<small>次の日の昼へ</small></button>
+        <button class="btn" data-act="gacha">ガチャ<small>石 ${save.items.stone ?? 0}</small></button>
         <button class="btn" data-act="book">手帳</button>
         <button class="btn" data-act="party">編成<small>${save.party.length}人</small></button>
         <button class="btn gold" data-act="grow">育てる</button></div>
@@ -202,7 +204,10 @@ export function start(): void {
         showHub(note);
       }
       else if (t.dataset.act === 'grow') openGrowth();
-      else if (t.dataset.act === 'book') {
+      else if (t.dataset.act === 'gacha') {
+        closeHub();
+        openGacha(save, rng, persist, () => showHub());
+      } else if (t.dataset.act === 'book') {
         closeHub();
         openNotebook(save, () => showHub());
       } else if (t.dataset.act === 'party') {

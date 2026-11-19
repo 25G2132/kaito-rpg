@@ -11,6 +11,8 @@ export interface WeaponDef {
   stats: Partial<Stats>;
   mods?: Mods;
   cost: number; // 作るのに要る設計図の切れ端
+  rarity?: number; // ガチャの武器なら ★4・★5
+  gachaOnly?: boolean; // ガチャでしか手に入らない（作れない）
 }
 
 export const WEAPONS: Record<string, WeaponDef> = {
@@ -49,6 +51,36 @@ export const WEAPONS: Record<string, WeaponDef> = {
     stats: { atk: 70 },
     mods: { dmgPct: 0.15, startEnergyPct: 0.2 },
     cost: 4,
+  },
+  tsubaki_blade: {
+    id: 'tsubaki_blade',
+    name: '月影の刀',
+    owner: 'tsubaki',
+    desc: '攻撃+110、会心ダメージ+40%。与えるダメージ+15%（ガチャ★5）',
+    stats: { atk: 110, critDmg: 0.4 },
+    mods: { dmgPct: 0.15 },
+    cost: 0,
+    rarity: 5,
+    gachaOnly: true,
+  },
+  night_glove: {
+    id: 'night_glove',
+    name: '夜鳴きの手袋',
+    desc: '攻撃+70、会心率+8%（だれでも・ガチャ★4）',
+    stats: { atk: 70, critRate: 0.08 },
+    cost: 0,
+    rarity: 4,
+    gachaOnly: true,
+  },
+  silver_charm: {
+    id: 'silver_charm',
+    name: '銀の鈴',
+    desc: 'HP+500。回復とバリアが15%多い（だれでも・ガチャ★4）',
+    stats: { hp: 500 },
+    mods: { healPct: 0.15 },
+    cost: 0,
+    rarity: 4,
+    gachaOnly: true,
   },
   baton: {
     id: 'baton',

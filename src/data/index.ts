@@ -9,7 +9,7 @@ export { DEFAULT_LEVEL, DEFAULT_PARTY } from './characters';
 // 戦う相手。farm＝材料を集める戦い（段階 I〜III。前の段階に勝つと次に挑める）、boss＝第1章のボス。
 // 一瞬で回す仕組みはない（自分で戦う。自動・倍速は使える）。
 
-type TierDef = Pick<EncounterDef, 'level' | 'recommend' | 'rewards' | 'gearOdds'>;
+type TierDef = Pick<EncounterDef, 'level' | 'recommend' | 'rewards' | 'gearOdds' | 'firstClear'>;
 
 /** 材料の戦いを、段階ごとの戦いに分けて作る（id は patrol1, patrol2 …） */
 function farm(group: string, name: string, desc: string, waves: string[][], tiers: TierDef[]): Record<string, EncounterDef> {
@@ -25,6 +25,8 @@ function farm(group: string, name: string, desc: string, waves: string[][], tier
       tier: i + 1,
       unlock: i > 0 ? `${group}${i}` : undefined,
       waves,
+      // はじめて勝つと月の石（上の段階ほど多い）
+      firstClear: { exp: 0, items: { stone: [160 * (i + 1), 160 * (i + 1)] }, gear: 0 },
       ...t,
     };
   });
@@ -67,7 +69,7 @@ export const ENCOUNTERS: Record<string, EncounterDef> = {
     kind: 'field',
     level: 30,
     waves: [['guard', 'robot', 'guard']],
-    rewards: { exp: 350, items: { parts: [8, 12], blueprint: [1, 1] }, gear: 1 },
+    rewards: { exp: 350, items: { parts: [8, 12], blueprint: [1, 1], stone: [320, 320] }, gear: 1 },
     gearOdds: { 4: 60, 5: 40 },
   },
   ...field('field_vault', '金庫室の前の見回り', 32, [['guard', 'robot', 'guard']], { exp: 300, items: { key: [1, 1], parts: [6, 8] }, gear: 1 }),
@@ -86,7 +88,7 @@ export const ENCOUNTERS: Record<string, EncounterDef> = {
     ],
     gearOdds: { 4: 70, 5: 30 },
     rewards: { exp: 600, items: { parts: [25, 35], key: [2, 3] }, gear: 2 },
-    firstClear: { exp: 0, items: { book: [10, 10], blueprint: [4, 4] }, gear: 0 },
+    firstClear: { exp: 0, items: { book: [10, 10], blueprint: [4, 4], stone: [1600, 1600] }, gear: 0 },
   },
 };
 
