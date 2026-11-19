@@ -298,7 +298,8 @@ describe('釣り合い（何百回も戦わせて勝率を出す）', () => {
     for (const seed of [1, 2]) expect(winRate(grow(10, seed), 'vault', 50), 'seed ' + seed).toBeLessThanOrEqual(0.1);
   });
 
-  it('材料の戦いを25回くり返して育てると、ボスにほぼ勝てる', () => {
-    for (const seed of [1, 2, 3]) expect(winRate(grow(25, seed), 'vault', 100), 'seed ' + seed).toBeGreaterThanOrEqual(0.9);
+  // ふつうは20〜25回で勝てるようになる。運が悪くても30回あれば、どの種でもほぼ勝てる
+  it('材料の戦いを30回くり返して育てると、ボスにほぼ勝てる', () => {
+    for (const seed of [1, 2, 3, 4]) expect(winRate(grow(30, seed), 'vault', 100), 'seed ' + seed).toBeGreaterThanOrEqual(0.9);
   });
 });

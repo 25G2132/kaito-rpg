@@ -26,7 +26,9 @@ import { openNotebook } from '../ui/notebookView';
 import { acceptQuest, completeQuest, questMark, questOf, questState } from '../progress/quests';
 import { watchOrientation } from '../ui/orientation';
 import '../fieldView/field.css';
-import { MANSION, SCHOOL } from '../data/maps';
+import { MANSION, SCHOOL, TOWN } from '../data/maps';
+import { choose, openShop, playFish } from '../ui/townViews';
+import { fish, fishLeft } from '../progress/town';
 import { showTalk } from '../ui/talkView';
 import { transition } from '../ui/loading';
 import { FieldState, type FieldEvent } from '../field/logic';
@@ -406,7 +408,7 @@ export function start(): void {
     busy: boolean; // 戦いの間は止める
     talking: boolean; // 会話の間は止める（画面は出したまま）
     mapTick: number;
-    kind: 'mansion' | 'school';
+    kind: 'mansion' | 'school' | 'town';
   }
   let fieldRun: FieldRun | null = null;
   const HACK_TIME = 1.2;
@@ -425,6 +427,33 @@ export function start(): void {
   }
 
   // ---- 昼の学校 ----
+  /** 昼の街（寄り道）。学校と同じ時間のまま */
+  function startTown(): void {
+    endInfiltration();
+    const state = new FieldState(TOWN, slotOf(save.talksToday), collectedHidden());
+    const view = new FieldView(state, { playerLook: CHARACTERS.akari.look, vrm: vrmOf('akari'), day: true });
+    view.resize(window.innerWidth, window.innerHeight);
+    const fh = new FieldHud({ onAttack: () => {}, onInteract: fieldInteract, onMenu: townMenu, onLens: toggleLens }, { school: true, menuLabel: '帰る' });
+    fieldRun = { state, view, fh, hackT: null, busy: false, talking: false, mapTick: 0, kind: 'town' };
+    fh.banner('街に寄り道。お店・池のつり・路地裏のうわさ', 'info');
+  }
+
+  function townMenu(): void {
+    if (!fieldRun || fieldRun.talking) return;
+    if (window.confirm('家に帰って、夜にしますか？')) goHome();
+  }
+
+  /** 昇降口：街へ寄り道するか、家に帰るか */
+  async function schoolExit(): Promise<void> {
+    const r = fieldRun;
+    if (!r) return;
+    r.talking = true;
+    const i = await choose('どうする？', ['街へ寄り道', '家に帰る（夜へ）']);
+    r.talking = false;
+    if (i === 0) void transition('街', '放課後の寄り道', startTown);
+    else if (i === 1) goHome();
+  }
+
   function startSchool(note = ''): void {
     endInfiltration();
     closeHub();
@@ -442,7 +471,7 @@ export function start(): void {
     fh.banner(note || `${save.day}日目の昼。仲間に話しかけると絆が深まる（1日${TALKS_PER_DAY}回）`, 'info');
   }
 
-  function leaveSchool(): void {
+  function goHome(): void {
     goNight(save);
     persist();
     void transition('夜の街', `${save.day}日目の夜。怪盗の時間だ`, () => {
@@ -453,7 +482,26 @@ export function start(): void {
 
   function schoolMenu(): void {
     if (!fieldRun || fieldRun.talking) return;
-    if (window.confirm('下校して、夜にしますか？')) leaveSchool();
+    if (window.confirm('下校して、夜にしますか？')) goHome();
+  }
+
+  /** つり（1日3回まで） */
+  async function doFish(): Promise<void> {
+    const r = fieldRun;
+    if (!r) return;
+    if (fishLeft(save) <= 0) {
+      r.fh.banner('きょうのつりはおしまい。また明日', 'info');
+      return;
+    }
+    r.talking = true;
+    const ok = await playFish(rng);
+    const got = fish(save, rng, ok);
+    persist();
+    r.talking = false;
+    if (got && got.name) {
+      const list = Object.entries(got.items).map(([k, n]) => `${ITEMS[k].name}×${n}`).join('・');
+      r.fh.banner(`${got.name}がつれた！ ${list}`, 'good');
+    } else r.fh.banner(`つれなかった…（きょうはあと${fishLeft(save)}回）`, 'info');
   }
 
   async function doTalk(charId: string): Promise<void> {
@@ -573,13 +621,26 @@ export function start(): void {
       r.hackT = 0; // 少し時間がかかる（その間に見つかることもある）
       return;
     }
+    if (it.kind === 'npc' && it.def.shop) {
+      void (async () => {
+        r.talking = true;
+        await openShop(save, it.def.shop!, persist);
+        r.talking = false;
+      })();
+      return;
+    }
     if (it.kind === 'npc') {
       if (it.def.charId) void doTalk(it.def.charId);
       else void doChat(it.def);
       return;
     }
     if (it.kind === 'exit') {
-      leaveSchool();
+      if (r.kind === 'school') void schoolExit();
+      else goHome();
+      return;
+    }
+    if (it.kind === 'spot') {
+      void doFish();
       return;
     }
     if (it.kind === 'boss') {
@@ -695,15 +756,20 @@ export function start(): void {
           : it.kind === 'npc'
             ? it.def.charId
               ? `${CHARACTERS[it.def.charId].name}と話す（絆）`
-              : `${it.def.name}と話す`
+              : it.def.shop
+                ? `${it.def.name}（お店）`
+                : `${it.def.name}と話す`
             : it.kind === 'exit'
               ? it.label
+              : it.kind === 'spot'
+                ? it.label
               : it.kind === 'hidden'
                 ? it.def.kind === 'enemy'
                   ? '隠れた敵に挑む'
                   : '拾う'
                 : '番人に挑む';
     r.fh.setInteract(label);
+    if (r.kind === 'town') r.fh.setStatus(`${save.day}日目　寄り道　おこづかい ${save.items.coin ?? 0}　つり あと${fishLeft(save)}回`);
     if (r.kind === 'school') r.fh.setStatus(`${save.day}日目　${SLOT_NAMES[r.state.slot]}　仲間と話せる回数 あと${TALKS_PER_DAY - save.talksToday}`);
     if (++r.mapTick % 3 === 0) r.fh.drawMap(r.state);
     stage.renderer.render(r.view.scene, r.view.camera);

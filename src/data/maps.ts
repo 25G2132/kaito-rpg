@@ -276,7 +276,7 @@ export const SCHOOL: MapDef = {
       ],
     },
   ],
-  exit: { pos: [1.2, 12], label: '昇降口から下校する（夜へ）' },
+  exit: { pos: [1.2, 12], label: '昇降口から帰る（街へ・家へ）' },
   hidden: [
     { id: 's_library', pos: [1.4, 25], kind: 'item', items: { note: 2 }, text: 'だれも借りない本に、技の手帳がはさまっていた' },
     { id: 's_roof', pos: [43, 1], kind: 'item', items: { parts: 10 }, text: '屋上のすみに、だれかの工具箱' },
@@ -285,4 +285,112 @@ export const SCHOOL: MapDef = {
   ],
 };
 
-export const MAPS: Record<string, MapDef> = { mansion: MANSION, school: SCHOOL };
+// 昼の街（寄り道）。商店街・公園の池・路地裏・駅前。お店・つり・うわさ・隠し要素。
+//
+//   z=0 ┌─本屋─┬─ジャンク屋─┬──────────┐
+//       │   商店街          │  公園（池）  │
+//  z=10 ├────────────────┴──────────┤
+//       │            大通り             │
+//  z=14 ├────────┬────────────────┤
+//       │ 路地裏  │      駅前            │
+//  z=24 └────────┴────────────────┘
+//      x=0     x=12      x=24       x=40
+const water = (x: number, z: number, w: number, d: number) => wall(x, z, w, d, 'water', 0.05);
+
+export const TOWN: MapDef = {
+  id: 'town',
+  name: '街',
+  start: [30, 20],
+  startDir: -Math.PI / 2,
+  wallColor: '#e8dccb',
+  areas: [
+    { name: '商店街', x: 0, z: 0, w: 24, d: 10, floor: '#c4b8a6' },
+    { name: '公園', x: 24, z: 0, w: 16, d: 10, floor: '#82c46f' },
+    { name: '大通り', x: 0, z: 10, w: 40, d: 4, floor: '#8d929c' },
+    { name: '路地裏', x: 0, z: 14, w: 12, d: 10, floor: '#6f6a78' },
+    { name: '駅前', x: 12, z: 14, w: 28, d: 10, floor: '#cfc8bc' },
+  ],
+  walls: [
+    wall(-T, -T, 40 + 2 * T, T),
+    wall(-T, 0, T, 24),
+    wall(40, 0, T, 24),
+    wall(-T, 24, 40 + 2 * T, T),
+    // お店の建物（北の壁ぎわ）
+    wall(1, 0, 7, 2.2, 'shopfront', 2.6),
+    wall(10, 0, 8, 2.2, 'shopfront', 2.6),
+    wall(19.5, 0, 4, 2.2, 'shopfront', 2.6),
+    // 公園の池と木
+    water(28, 2, 8, 4.5),
+    wall(25, 7.5, 1.2, 1.2, 'hedge', 2.2),
+    wall(38, 1, 1.2, 1.2, 'hedge', 2.2),
+    // 路地裏の壁と箱
+    wall(12, 14, T, 4),
+    wall(12, 20, T, 4),
+    wall(2, 17, 1.2, 1.2, 'desk', 1.0),
+    wall(8, 21, 1.4, 1.0, 'desk', 1.0),
+    wall(5, 22.5, 1.0, 1.0, 'desk', 0.8),
+    // 駅前のベンチと花だん
+    wall(20, 19, 3, 0.6, 'desk', 0.5),
+    wall(32, 16, 4, 1, 'hedge', 0.7),
+  ],
+  doors: [],
+  shadows: [{ x: 0, z: 14, w: 12, d: 10 }], // 路地裏は暗い
+  terminals: [],
+  cameras: [],
+  patrols: [],
+  chests: [],
+  props: [
+    { kind: 'poster', x: 4.5, z: 2.25, dir: S, color: '#7ab8ff' },
+    { kind: 'poster', x: 14, z: 2.25, dir: S, color: '#ffb05a' },
+    { kind: 'poster', x: 21.5, z: 2.25, dir: S, color: '#ff8fa3' },
+    { kind: 'plant', x: 9, z: 2.8 },
+    { kind: 'plant', x: 18.7, z: 2.8 },
+    { kind: 'fence', x: 24.2, z: 9.6, w: 15.6, dir: S },
+    { kind: 'clock', x: 30, z: 23.9, dir: -S },
+  ],
+  npcs: [
+    {
+      id: 'bookseller',
+      name: '本屋の店主',
+      look: { shape: 'hero', color: '#7ab8ff', scale: 1.05 },
+      shop: 'bookstore',
+      at: { morning: { pos: [4.5, 3.1], dir: S }, lunch: { pos: [4.5, 3.1], dir: S }, after: { pos: [4.5, 3.1], dir: S } },
+    },
+    {
+      id: 'junkdealer',
+      name: 'ジャンク屋の店主',
+      look: { shape: 'hero', color: '#c08850', scale: 1.1 },
+      shop: 'junk',
+      at: { morning: { pos: [14, 3.1], dir: S }, lunch: { pos: [14, 3.1], dir: S }, after: { pos: [14, 3.1], dir: S } },
+    },
+    {
+      id: 'oldman',
+      name: '公園のおじいさん',
+      look: { shape: 'hero', color: '#a0a0a0', scale: 0.95 },
+      at: { morning: { pos: [27, 7], dir: -S }, lunch: { pos: [27, 7], dir: -S }, after: { pos: [27, 7], dir: -S } },
+      lines: [
+        ['公園のおじいさん', '池のコイはな、浮きが沈んだ瞬間に引くんじゃ。'],
+        ['公園のおじいさん', '金色のコイがおるという話じゃ。わしはまだ見たことがないがの。'],
+      ],
+    },
+    {
+      id: 'cat',
+      name: '路地裏のねこ',
+      look: { shape: 'drone', color: '#e0a060', scale: 0.6 },
+      at: { morning: { pos: [6, 19], dir: 0 }, lunch: { pos: [6, 19], dir: 0 }, after: { pos: [6, 19], dir: 0 } },
+      lines: [
+        ['路地裏のねこ', 'にゃあ。（この先の箱のかげ、何か光ってたにゃ）'],
+        ['路地裏のねこ', 'にゃ。（黒金邸の裏口は、夜でも開いてることがあるらしいにゃ）'],
+      ],
+    },
+  ],
+  spots: [{ id: 'pond', pos: [32, 7.2], kind: 'fish', label: 'つりをする' }],
+  hidden: [
+    { id: 't_alley', pos: [9.4, 22.6], kind: 'item', items: { blueprint: 1, coin: 30 }, text: '箱のかげに、だれかの落とし物' },
+    { id: 't_park', pos: [38.6, 3], kind: 'item', items: { coin: 50 }, text: '木の根もとに、うめられたおこづかい' },
+    { id: 't_station', pos: [39, 23], kind: 'item', items: { note: 1 }, text: '駅のすみに、技の手帳' },
+  ],
+  exit: { pos: [38.6, 12], label: '家に帰る（夜へ）' },
+};
+
+export const MAPS: Record<string, MapDef> = { mansion: MANSION, school: SCHOOL, town: TOWN };

@@ -15,7 +15,7 @@ export interface Rect {
 
 export interface WallDef extends Rect {
   h?: number; // 高さ（見た目。生け垣は低い）
-  kind?: 'wall' | 'hedge' | 'shelf' | 'desk' | 'locker';
+  kind?: 'wall' | 'hedge' | 'shelf' | 'desk' | 'locker' | 'water' | 'shopfront';
 }
 
 export interface DoorDef extends Rect {
@@ -80,6 +80,7 @@ export interface MapDef {
   boss?: { pos: Vec2; encounter: string; name: string };
   npcs?: NpcDef[]; // 話しかけられる人（学校）
   hidden?: HiddenDef[]; // 解析レンズで見えるもの（隠し要素）
+  spots?: { id: string; pos: Vec2; kind: 'fish'; label: string }[]; // 小さな遊びの場所（つり）
   props?: PropDef[]; // 見た目だけの小物（ぶつからない）
   wallColor?: string; // 壁の色（学校は明るく）
   exit?: { pos: Vec2; label: string }; // 出口（学校なら「下校する」）
@@ -123,5 +124,6 @@ export interface NpcDef {
   name?: string;
   look?: LookDef;
   lines?: string[][]; // [名前, 文, …] の組を、話すたびに順に
+  shop?: string; // お店の人なら、お店の id
   at: Partial<Record<Slot, NpcPlace>>; // その時間にいなければ、いない
 }

@@ -46,14 +46,14 @@ function field(id: string, name: string, level: number, waves: string[][], rewar
 
 export const ENCOUNTERS: Record<string, EncounterDef> = {
   ...farm('patrol', '夜の見回り', '参考書・部品・装備が出る', WAVES_PATROL, [
-    { level: 12, recommend: 3500, gearOdds: { 2: 60, 3: 35, 4: 5 }, rewards: { exp: 150, items: { book: [1, 1], parts: [5, 8] }, gear: 1 } },
-    { level: 27, recommend: 6500, gearOdds: { 2: 20, 3: 50, 4: 26, 5: 4 }, rewards: { exp: 220, items: { book: [1, 2], parts: [8, 12] }, gear: 1 } },
-    { level: 35, recommend: 9500, gearOdds: { 3: 40, 4: 46, 5: 14 }, rewards: { exp: 300, items: { book: [2, 3], parts: [12, 16], blueprint: [0, 1] }, gear: 2 } },
+    { level: 12, recommend: 3500, gearOdds: { 2: 60, 3: 35, 4: 5 }, rewards: { exp: 150, items: { book: [1, 1], parts: [5, 8], coin: [15, 25] }, gear: 1 } },
+    { level: 27, recommend: 6500, gearOdds: { 2: 20, 3: 50, 4: 26, 5: 4 }, rewards: { exp: 220, items: { book: [1, 2], parts: [8, 12], coin: [25, 40] }, gear: 1 } },
+    { level: 35, recommend: 9500, gearOdds: { 3: 40, 4: 46, 5: 14 }, rewards: { exp: 300, items: { book: [2, 3], parts: [12, 16], blueprint: [0, 1], coin: [40, 60] }, gear: 2 } },
   ]),
   ...farm('archive', '資料室の警備', '技の手帳・鍵の欠片・設計図が出る', WAVES_ARCHIVE, [
-    { level: 13, recommend: 4000, rewards: { exp: 150, items: { note: [1, 1], key: [1, 1], blueprint: [0, 1], parts: [2, 4] }, gear: 0 } },
-    { level: 28, recommend: 7000, rewards: { exp: 220, items: { note: [1, 2], key: [1, 2], blueprint: [1, 1], parts: [3, 5] }, gear: 0 } },
-    { level: 36, recommend: 10000, rewards: { exp: 300, items: { note: [2, 3], key: [2, 3], blueprint: [1, 2], parts: [4, 6] }, gear: 0 } },
+    { level: 13, recommend: 4000, rewards: { exp: 150, items: { note: [1, 1], key: [1, 1], blueprint: [0, 1], parts: [2, 4], coin: [15, 25] }, gear: 0 } },
+    { level: 28, recommend: 7000, rewards: { exp: 220, items: { note: [1, 2], key: [1, 2], blueprint: [1, 1], parts: [3, 5], coin: [25, 40] }, gear: 0 } },
+    { level: 36, recommend: 10000, rewards: { exp: 300, items: { note: [2, 3], key: [2, 3], blueprint: [1, 2], parts: [4, 6], coin: [40, 60] }, gear: 0 } },
   ]),
   // 黒金邸の見回り（歩く場所で触れると戦い）。奥へ行くほど強い
   ...field('field_garden', '庭の見回り', 18, [['guard', 'drone']], { exp: 150, items: { parts: [3, 5] }, gear: 0 }),

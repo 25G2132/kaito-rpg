@@ -46,6 +46,7 @@ export interface SaveData {
   seen: Record<string, number>; // 怪盗手帳：倒した（出会った）敵の数
   questState: Record<string, number>; // 頼みごと：1＝受けた、2＝解決
   questBase: Record<string, number>; // 頼みごと：受けたときの数
+  daily: Record<string, number>; // その日だけの数（お店で買った数・つりの回数）。寝ると0
   losses: Record<string, number>;
 }
 
@@ -70,6 +71,7 @@ export function defaultSave(): SaveData {
     seen: {},
     questState: {},
     questBase: {},
+    daily: {},
     losses: {},
   };
 }
@@ -123,6 +125,8 @@ export function validateSave(raw: unknown): SaveData | null {
   if (raw.questState === undefined) raw.questState = {};
   if (raw.questBase === undefined) raw.questBase = {};
   if (!isCountMap(raw.questState) || !isCountMap(raw.questBase)) return null;
+  if (raw.daily === undefined) raw.daily = {};
+  if (!isCountMap(raw.daily)) return null;
   const save = raw as unknown as SaveData;
   // 新しいキャラが足されたときは、その人だけ初期値で足す
   for (const id of DEFAULT_PARTY) save.chars[id] ??= { level: START_LEVEL, exp: 0, asc: 0, skill: 1, weapon: null };

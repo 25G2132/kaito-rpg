@@ -81,6 +81,7 @@ export type FieldEvent =
   | { t: 'boss' }
   | { t: 'talk'; npc: string } // 人に話しかけた（npc は NpcDef の id）
   | { t: 'exit' } // 出口
+  | { t: 'spot'; id: string } // つりなど
   | { t: 'found'; id: string; text: string } // レンズで見つけた
   | { t: 'pickup'; id: string; items: Record<string, number>; text: string } // 隠れた材料を拾った
   | { t: 'hiddenBattle'; id: string; encounter: string; text: string } // 隠れた敵
@@ -125,7 +126,8 @@ export type Interactable =
   | { kind: 'boss' }
   | { kind: 'npc'; def: NpcDef }
   | { kind: 'exit'; label: string }
-  | { kind: 'hidden'; def: HiddenDef };
+  | { kind: 'hidden'; def: HiddenDef }
+  | { kind: 'spot'; id: string; label: string };
 
 export class FieldState {
   readonly map: MapDef;
@@ -335,6 +337,7 @@ export class FieldState {
     if (this.map.boss) cands.push({ d: dist(this.map.boss.pos, this.pos), it: { kind: 'boss' } });
     for (const n of this.npcs) if (n.present) cands.push({ d: dist(n.pos, this.pos), it: { kind: 'npc', def: n.def } });
     if (this.map.exit) cands.push({ d: dist(this.map.exit.pos, this.pos), it: { kind: 'exit', label: this.map.exit.label } });
+    for (const sp of this.map.spots ?? []) cands.push({ d: dist(sp.pos, this.pos), it: { kind: 'spot', id: sp.id, label: sp.label } });
     for (const h of this.map.hidden ?? []) {
       if (this.revealed.has(h.id) && !this.collected.has(h.id)) cands.push({ d: dist(h.pos, this.pos), it: { kind: 'hidden', def: h } });
     }
@@ -361,6 +364,7 @@ export class FieldState {
     }
     if (it.kind === 'npc') return { t: 'talk', npc: it.def.id };
     if (it.kind === 'exit') return { t: 'exit' };
+    if (it.kind === 'spot') return { t: 'spot', id: it.id };
     if (it.kind === 'hidden') {
       if (it.def.kind === 'enemy') return { t: 'hiddenBattle', id: it.def.id, encounter: it.def.encounter!, text: it.def.text };
       this.collected.add(it.def.id);

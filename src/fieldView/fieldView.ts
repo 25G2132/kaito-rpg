@@ -10,7 +10,7 @@ import { CHARACTERS } from '../data/characters';
 // 歩く場所の3D。形はすべてプログラムで作る（外の素材なし）。
 // 見回りとカメラの「見える範囲」は床に扇の形で出す。影は床の暗い部分。
 
-const WALL_COLORS = { wall: 0x4a4458, hedge: 0x2f5a35, shelf: 0x5a4632, desk: 0x8a6a48, locker: 0x5f8fd0 } as const;
+const WALL_COLORS = { wall: 0x4a4458, hedge: 0x2f5a35, shelf: 0x5a4632, desk: 0x8a6a48, locker: 0x5f8fd0, water: 0x3a8fd8, shopfront: 0xd98c5f } as const;
 const PITCH = 0.95; // カメラの見下ろす角度
 const CAM_DIST = 8.5;
 

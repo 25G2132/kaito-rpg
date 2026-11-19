@@ -1037,3 +1037,30 @@ body:has(#perf) .turnbar {
   font-size: 18px;
   color: #fff;
 }
+
+/* ---- えらぶ・お店 ---- */
+.overlay.choose {
+  position: fixed;
+  z-index: 60;
+}
+/* ---- つり ---- */
+.ultgame.fish {
+  --c: #5ec8ff;
+  background: radial-gradient(circle, rgba(20, 70, 120, 0.6), rgba(5, 15, 30, 0.9));
+}
+.bobber {
+  width: 28px;
+  height: 46px;
+  border-radius: 14px 14px 10px 10px;
+  background: linear-gradient(#ff4d6d 50%, #ffffff 50%);
+  animation: float 0.9s ease-in-out infinite alternate;
+}
+@keyframes float {
+  from { transform: translateY(0); }
+  to { transform: translateY(-5px); }
+}
+.bobber.bite {
+  animation: none;
+  transform: translateY(26px) scale(0.85);
+  opacity: 0.6;
+}

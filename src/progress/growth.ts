@@ -295,6 +295,7 @@ export function sleep(save: SaveData): void {
   save.day++;
   save.phase = 'day';
   save.talksToday = 0;
+  save.daily = {};
 }
 
 // ---------- ごほうび ----------
