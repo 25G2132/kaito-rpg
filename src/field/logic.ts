@@ -2,7 +2,7 @@
 // 歩く・壁にぶつかる・見回りとカメラが見る・影に隠れる・ハッキング・宝箱・戦いの始まり方。
 
 import type { Opening } from '../battle/battle';
-import type { CameraDef, ChestDef, MapDef, NpcDef, PatrolDef, Rect, TerminalDef, Vec2 } from './types';
+import type { CameraDef, ChestDef, MapDef, NpcDef, PatrolDef, Rect, Slot, TerminalDef, Vec2 } from './types';
 
 export const PLAYER_RADIUS = 0.35;
 export const WALK_SPEED = 3.0;
@@ -77,7 +77,7 @@ export type FieldEvent =
   | { t: 'chest'; chest: string; items: Record<string, number> }
   | { t: 'hacked'; terminal: string; targets: string[] }
   | { t: 'boss' }
-  | { t: 'talk'; npc: string } // 仲間に話しかけた
+  | { t: 'talk'; npc: string } // 人に話しかけた（npc は NpcDef の id）
   | { t: 'exit' } // 出口
   | { t: 'miss' }; // 攻撃が空ぶり
 
@@ -91,6 +91,16 @@ export interface PatrolState {
   lostTimer: number;
   defeated: boolean;
 }
+
+export interface NpcState {
+  def: NpcDef;
+  pos: Vec2;
+  dir: number;
+  wp: number;
+  present: boolean; // いまの時間にいるか
+}
+
+export const NPC_WALK = 1.1;
 
 export interface CameraState {
   def: CameraDef;
@@ -122,8 +132,12 @@ export class FieldState {
   hacked = new Set<string>();
   opened = new Set<string>();
 
-  constructor(map: MapDef) {
+  slot: Slot;
+  npcs: NpcState[] = [];
+
+  constructor(map: MapDef, slot: Slot = 'morning') {
     this.map = map;
+    this.slot = slot;
     this.pos = [...map.start];
     this.dir = map.startDir;
     this.patrols = map.patrols.map((def) => ({
@@ -137,12 +151,28 @@ export class FieldState {
       defeated: false,
     }));
     this.cameras = map.cameras.map((def) => ({ def, dir: def.dir, suspicion: 0, disabled: false }));
+    this.npcs = (map.npcs ?? []).map((def) => ({ def, pos: [0, 0] as Vec2, dir: 0, wp: 0, present: false }));
+    this.setSlot(slot);
+  }
+
+  /** 時間が変わる：人の居場所を入れかえる */
+  setSlot(slot: Slot): void {
+    this.slot = slot;
+    for (const n of this.npcs) {
+      const at = n.def.at[slot];
+      n.present = !!at;
+      if (at) {
+        n.pos = [...at.pos];
+        n.dir = at.dir;
+        n.wp = 0;
+      }
+    }
   }
 
   /** 体がぶつかるもの（壁と、閉まっている扉） */
   solids(): Rect[] {
     // 話しかけられる人も、ぶつかる（すり抜けない）
-    const people = (this.map.npcs ?? []).map((n) => ({ x: n.pos[0] - 0.3, z: n.pos[1] - 0.3, w: 0.6, d: 0.6 }));
+    const people = this.npcs.filter((n) => n.present).map((n) => ({ x: n.pos[0] - 0.3, z: n.pos[1] - 0.3, w: 0.6, d: 0.6 }));
     return [...this.map.walls, ...this.map.doors.filter((d) => !this.openDoors.has(d.id)), ...people];
   }
 
@@ -173,6 +203,21 @@ export class FieldState {
       const nz = input.move[1] / Math.hypot(input.move[0], input.move[1]);
       this.moveBy(nx * speed * dt, nz * speed * dt);
       this.dir = Math.atan2(nz, nx);
+    }
+    // 歩きまわる人（近くにいると立ち止まる）
+    for (const n of this.npcs) {
+      const route = n.def.at[this.slot]?.route;
+      if (!n.present || !route?.length || dist(n.pos, this.pos) < 2.2) continue;
+      const t = route[n.wp % route.length];
+      const tx = t[0] - n.pos[0];
+      const tz = t[1] - n.pos[1];
+      const tl = Math.hypot(tx, tz);
+      if (tl < 0.1) n.wp = (n.wp + 1) % route.length;
+      else {
+        const step = Math.min(tl, NPC_WALK * dt);
+        n.pos = [n.pos[0] + (tx / tl) * step, n.pos[1] + (tz / tl) * step];
+        n.dir = Math.atan2(tz, tx);
+      }
     }
     const hidden = this.inShadow();
     const blockers = this.solids();
@@ -266,7 +311,7 @@ export class FieldState {
     for (const c of this.map.chests) if (!this.opened.has(c.id)) cands.push({ d: dist(c.pos, this.pos), it: { kind: 'chest', def: c } });
     for (const t of this.map.terminals) if (!this.hacked.has(t.id)) cands.push({ d: dist(t.pos, this.pos), it: { kind: 'terminal', def: t } });
     if (this.map.boss) cands.push({ d: dist(this.map.boss.pos, this.pos), it: { kind: 'boss' } });
-    for (const n of this.map.npcs ?? []) cands.push({ d: dist(n.pos, this.pos), it: { kind: 'npc', def: n } });
+    for (const n of this.npcs) if (n.present) cands.push({ d: dist(n.pos, this.pos), it: { kind: 'npc', def: n.def } });
     if (this.map.exit) cands.push({ d: dist(this.map.exit.pos, this.pos), it: { kind: 'exit', label: this.map.exit.label } });
     const best = cands.filter((c) => c.d <= INTERACT_RANGE).sort((a, b) => a.d - b.d)[0];
     return best?.it ?? null;
@@ -289,7 +334,7 @@ export class FieldState {
       }
       return { t: 'hacked', terminal: it.def.id, targets: [...it.def.targets] };
     }
-    if (it.kind === 'npc') return { t: 'talk', npc: it.def.charId };
+    if (it.kind === 'npc') return { t: 'talk', npc: it.def.id };
     if (it.kind === 'exit') return { t: 'exit' };
     return { t: 'boss' };
   }

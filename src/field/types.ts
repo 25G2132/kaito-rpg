@@ -1,6 +1,8 @@
 // 歩く場所（忍び込む建物）のデータの形。中身は src/data/maps.ts に書く。
 // 床は x と z の平面（メートル）。高さは見た目だけ。
 
+import type { LookDef } from '../battle/types';
+
 export type Vec2 = [number, number];
 
 /** 四角（x, z が小さいほうの角、w, d が幅と奥行き） */
@@ -92,9 +94,23 @@ export interface PropDef {
   color?: string;
 }
 
-/** 話しかけられる人。charId は仲間のキャラ */
-export interface NpcDef {
-  charId: string;
+/** 学校の時間（朝・昼休み・放課後） */
+export type Slot = 'morning' | 'lunch' | 'after';
+export const SLOT_NAMES: Record<Slot, string> = { morning: '朝', lunch: '昼休み', after: '放課後' };
+
+/** 時間ごとの居場所。route があれば、そこを歩きまわる */
+export interface NpcPlace {
   pos: Vec2;
   dir: number;
+  route?: Vec2[];
+}
+
+/** 話しかけられる人。charId があれば仲間（絆の会話）、なければ生徒・先生（ひとこと） */
+export interface NpcDef {
+  id: string;
+  charId?: string;
+  name?: string;
+  look?: LookDef;
+  lines?: string[][]; // [名前, 文, …] の組を、話すたびに順に
+  at: Partial<Record<Slot, NpcPlace>>; // その時間にいなければ、いない
 }

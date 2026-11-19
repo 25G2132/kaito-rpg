@@ -235,10 +235,11 @@ export class FieldHud {
       g.arc(X(st.map.boss.pos[0]), Z(st.map.boss.pos[1]), 6, 0, Math.PI * 2);
       g.fill();
     }
-    for (const n of st.map.npcs ?? []) {
-      g.fillStyle = '#5ef0a0';
+    for (const n of st.npcs) {
+      if (!n.present) continue;
+      g.fillStyle = n.def.charId ? '#5ef0a0' : '#9ad0ff';
       g.beginPath();
-      g.arc(X(n.pos[0]), Z(n.pos[1]), 5, 0, Math.PI * 2);
+      g.arc(X(n.pos[0]), Z(n.pos[1]), n.def.charId ? 5 : 3.5, 0, Math.PI * 2);
       g.fill();
     }
     if (st.map.exit) {

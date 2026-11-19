@@ -152,16 +152,15 @@ export class FieldView {
       s.add(light);
     }
 
-    // 話しかけられる仲間（名前を頭の上に出す）
+    // 話しかけられる人（名前を頭の上に出す）。仲間は VRM があれば VRM
     for (const n of map.npcs ?? []) {
-      const c = CHARACTERS[n.charId];
-      if (!c) continue;
-      const actor = new ActorView(c.look, 1);
-      const v = opts.npcVrms?.[n.charId];
+      const c = n.charId ? CHARACTERS[n.charId] : undefined;
+      const look = c?.look ?? n.look ?? { shape: 'hero' as const, color: '#cccccc' };
+      const name = c?.name ?? n.name ?? '';
+      const actor = new ActorView(look, 1);
+      const v = n.charId ? opts.npcVrms?.[n.charId] : undefined;
       if (v) actor.setVrm(v);
-      actor.root.position.set(n.pos[0], 0, n.pos[1]);
-      actor.root.rotation.y = -n.dir;
-      const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture(c.name, c.look.color), depthTest: false }));
+      const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture(name, c ? look.color : '#9aa3b8'), depthTest: false }));
       label.scale.set(1.6, 0.4, 1);
       label.position.y = actor.height + 0.55;
       actor.root.add(label);
@@ -223,12 +222,18 @@ export class FieldView {
     }
     this.player.update(this.time, dt);
 
-    // 仲間は、近くに来るとこちらを向く
+    // 人：いまの時間にいる人だけ出す。近くに来るとこちらを向く
     for (const n of this.npcs) {
-      const dx = px - n.def.pos[0];
-      const dz = pz - n.def.pos[1];
-      const want = Math.hypot(dx, dz) < 3 ? Math.atan2(dz, dx) : n.def.dir;
-      n.actor.root.rotation.y = -want;
+      const s = st.npcs.find((x) => x.def.id === n.def.id);
+      n.actor.root.visible = !!s?.present;
+      if (!s?.present) continue;
+      n.actor.root.position.set(s.pos[0], 0, s.pos[1]);
+      const dx = px - s.pos[0];
+      const dz = pz - s.pos[1];
+      const near = Math.hypot(dx, dz) < 3;
+      n.actor.root.rotation.y = -(near ? Math.atan2(dz, dx) : s.dir);
+      const walking = !near && !!s.def.at[st.slot]?.route;
+      n.actor.walk += ((walking ? 0.5 : 0) - n.actor.walk) * Math.min(1, dt * 8);
       n.actor.update(this.time, dt);
     }
     for (const p of st.patrols) {

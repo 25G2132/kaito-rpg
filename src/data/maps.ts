@@ -175,7 +175,7 @@ export const SCHOOL: MapDef = {
     wall(1, 22.5, 5, 0.7, 'shelf', 2.2),
     wall(8.5, 20, 3.5, 1.6, 'desk', 0.8),
     // 購買：カウンター
-    wall(15, 17.5, 8, 0.8, 'desk', 1.0),
+    wall(15, 17.6, 8, 0.6, 'desk', 1.0),
     // 体育館：舞台
     wall(30, 28, 10, 2, 'desk', 0.9),
   ],
@@ -198,14 +198,77 @@ export const SCHOOL: MapDef = {
     { kind: 'plant', x: 43.2, z: 13 },
     { kind: 'plant', x: 29.2, z: 1 },
     { kind: 'fence', x: 30.4, z: 0.2, w: 13.4, dir: S },
-    { kind: 'bread', x: 16, z: 17.6, w: 6 },
+    { kind: 'bread', x: 16, z: 17.5, w: 6 },
     { kind: 'hoop', x: 24.8, z: 22 },
     { kind: 'hoop', x: 43.2, z: 22 },
   ],
   npcs: [
-    { charId: 'shin', pos: [2.6, 7.6], dir: 0 },
-    { charId: 'yuki', pos: [9.5, 1.9], dir: S },
-    { charId: 'hayate', pos: [22, 4.6], dir: Math.PI },
+    // 仲間（話すと絆が上がる。時間ごとに居場所が変わる）
+    { id: 'shin', charId: 'shin', at: { morning: { pos: [2.6, 7.6], dir: 0 }, lunch: { pos: [40, 6], dir: -S }, after: { pos: [10.2, 23], dir: -S } } },
+    { id: 'yuki', charId: 'yuki', at: { morning: { pos: [9.5, 1.9], dir: S }, lunch: { pos: [22, 8], dir: -S }, after: { pos: [6.5, 8.3], dir: -S } } },
+    { id: 'hayate', charId: 'hayate', at: { morning: { pos: [18, 12], dir: 0 }, lunch: { pos: [18, 16], dir: S }, after: { pos: [34, 20], dir: 0 } } },
+    // 生徒と先生（話すとひとこと。話せる回数は減らない）。文は仮
+    {
+      id: 'teacher',
+      name: '担任の先生',
+      look: { shape: 'hero', color: '#8a8fa8', scale: 1.08 },
+      at: { morning: { pos: [6.5, 2.4], dir: S }, lunch: { pos: [14, 12], dir: 0, route: [[14, 12], [28, 12]] }, after: { pos: [3.5, 24.5], dir: -S } },
+      lines: [
+        ['担任の先生', 'おはよう。今日も遅刻ギリギリだな。'],
+        ['担任の先生', '弱点をつくと守りが崩れる……って、なんの話だ？　ゲームか？'],
+        ['担任の先生', '最近、夜の街で怪盗のうわさがあるらしい。気をつけて帰れよ。'],
+      ],
+    },
+    {
+      id: 'librarian',
+      name: '図書委員',
+      look: { shape: 'hero', color: '#b48ad8', scale: 0.95 },
+      at: { morning: { pos: [11, 17], dir: Math.PI }, lunch: { pos: [11, 17], dir: Math.PI }, after: { pos: [11, 17], dir: Math.PI } },
+      lines: [
+        ['図書委員', '図書室ではお静かに。'],
+        ['図書委員', 'いちばん奥の棚に、だれも借りない本があるんです。……ふしぎですよね。'],
+      ],
+    },
+    {
+      id: 'shop',
+      name: '購買の店員さん',
+      look: { shape: 'hero', color: '#f0a050', scale: 1.05 },
+      at: { morning: { pos: [19, 18.75], dir: -S }, lunch: { pos: [19, 18.75], dir: -S } },
+      lines: [
+        ['購買の店員さん', 'いらっしゃい！　メロンパンは早い者勝ちだよ。'],
+        ['購買の店員さん', '黒金社長？　うちのパンを買い占めたことがあってねえ……。'],
+      ],
+    },
+    {
+      id: 'basket',
+      name: 'バスケ部の先輩',
+      look: { shape: 'hero', color: '#ff8a3d', scale: 1.12 },
+      at: { lunch: { pos: [30, 20], dir: 0 }, after: { pos: [27, 17], dir: 0, route: [[27, 17], [41, 17], [41, 26], [27, 26]] } },
+      lines: [
+        ['バスケ部の先輩', 'お、アカリ！　入部の話、考えてくれた？'],
+        ['バスケ部の先輩', '体育館の裏、夜になると光ってるって知ってた？'],
+      ],
+    },
+    {
+      id: 'classmateA',
+      name: 'うわさ好きのクラスメイト',
+      look: { shape: 'hero', color: '#70c0a0' },
+      at: { morning: { pos: [3.6, 4.6], dir: 0 }, lunch: { pos: [16, 5], dir: 0, route: [[16, 5], [28, 5]] }, after: { pos: [40, 12], dir: Math.PI } },
+      lines: [
+        ['クラスメイト', 'ねえ聞いた？　夜の学校の屋上で、だれかが空を見てるんだって。'],
+        ['クラスメイト', '怪盗のうわさ、また増えてるよ。黒金邸がねらわれたとか。'],
+      ],
+    },
+    {
+      id: 'classmateB',
+      name: 'のんびりしたクラスメイト',
+      look: { shape: 'hero', color: '#e080a0', scale: 0.97 },
+      at: { morning: { pos: [33, 12], dir: Math.PI }, lunch: { pos: [35, 7], dir: -S } },
+      lines: [
+        ['クラスメイト', '屋上って、風が気持ちいいよね。'],
+        ['クラスメイト', 'シンくん、昼休みはいつも屋上でコーヒー飲んでるよ。'],
+      ],
+    },
   ],
   exit: { pos: [1.2, 12], label: '昇降口から下校する（夜へ）' },
 };

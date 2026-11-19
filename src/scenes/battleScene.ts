@@ -14,7 +14,8 @@ import { GameClock } from '../battleView/clock';
 import { Hud } from '../battleView/hud';
 import { Stage } from '../battleView/stage';
 import { PerfHud } from '../dev/perfHud';
-import { goNight, sleep, talk, talksToNext, TALKS_PER_DAY } from '../progress/growth';
+import { goNight, sleep, slotOf, talk, talksToNext, TALKS_PER_DAY } from '../progress/growth';
+import { SLOT_NAMES, type NpcDef } from '../field/types';
 import { applyRewards, autoInvest, isUnlocked, partyFor, partyPower, recordLoss, rollRewards, type Reward } from '../progress/growth';
 import { defaultSave, loadSave, storeSave } from '../progress/save';
 import { ITEMS } from '../data/items';
@@ -396,7 +397,7 @@ export function start(): void {
     hud.clearBattle();
     stage.clearEnemies();
     stage.showParty([], null); // VRM を学校の人にわたす
-    const state = new FieldState(SCHOOL);
+    const state = new FieldState(SCHOOL, slotOf(save.talksToday));
     const npcVrms: Record<string, VRM | null> = {};
     save.party.forEach((id, i) => (npcVrms[id] = vrms?.[i] ?? null));
     const view = new FieldView(state, { playerLook: CHARACTERS[save.party[0]].look, vrm: vrms?.[0] ?? null, day: true, npcVrms });
@@ -435,7 +436,27 @@ export function start(): void {
         ? `${name}との絆が <b>Lv${res.level}</b> になった！<br>${res.levelUp.desc}`
         : `${name}との絆が深まった（Lv${res.level}${next ? `・次まであと${next}回` : '・最大'}）`;
       await showTalk(res.lines, after);
+      // 仲間と話すと時間が進む（朝 → 昼休み → 放課後）。チャイムが鳴る
+      const slot = slotOf(save.talksToday);
+      if (slot !== r.state.slot) {
+        r.state.setSlot(slot);
+        r.fh.banner(`🔔 キーンコーンカーンコーン……　${SLOT_NAMES[slot]}`, 'info');
+      } else if (save.talksToday >= TALKS_PER_DAY) {
+        r.fh.banner('🔔 下校の時間。昇降口から帰ろう', 'info');
+      }
     }
+    r.talking = false;
+  }
+
+  /** 生徒・先生と話す（ひとこと。話せる回数は減らない） */
+  const chatCount: Record<string, number> = {};
+  async function doChat(def: NpcDef): Promise<void> {
+    const r = fieldRun;
+    if (!r || !def.lines?.length) return;
+    r.talking = true;
+    const n = chatCount[def.id] ?? 0;
+    chatCount[def.id] = n + 1;
+    await showTalk(def.lines[n % def.lines.length], null);
     r.talking = false;
   }
 
@@ -487,7 +508,8 @@ export function start(): void {
       return;
     }
     if (it.kind === 'npc') {
-      void doTalk(it.def.charId);
+      if (it.def.charId) void doTalk(it.def.charId);
+      else void doChat(it.def);
       return;
     }
     if (it.kind === 'exit') {
@@ -589,12 +611,14 @@ export function start(): void {
         : it.kind === 'terminal'
           ? 'ハッキング'
           : it.kind === 'npc'
-            ? `${CHARACTERS[it.def.charId].name}と話す`
+            ? it.def.charId
+              ? `${CHARACTERS[it.def.charId].name}と話す（絆）`
+              : `${it.def.name}と話す`
             : it.kind === 'exit'
               ? it.label
               : '番人に挑む';
     r.fh.setInteract(label);
-    if (r.kind === 'school') r.fh.setStatus(`${save.day}日目の昼　話せる回数 あと${TALKS_PER_DAY - save.talksToday}`);
+    if (r.kind === 'school') r.fh.setStatus(`${save.day}日目　${SLOT_NAMES[r.state.slot]}　仲間と話せる回数 あと${TALKS_PER_DAY - save.talksToday}`);
     if (++r.mapTick % 3 === 0) r.fh.drawMap(r.state);
     stage.renderer.render(r.view.scene, r.view.camera);
   }

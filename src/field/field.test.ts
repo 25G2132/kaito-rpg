@@ -156,25 +156,51 @@ describe('黒金邸：端末は影の中', () => {
 });
 
 describe('学校', () => {
-  it('仲間は壁の中になく、話しかけられる。昇降口で下校できる', () => {
-    const f = new FieldState(SCHOOL);
-    const walls = SCHOOL.walls;
-    for (const n of SCHOOL.npcs ?? []) {
-      expect(GAME_DATA.characters[n.charId], n.charId).toBeTruthy();
-      expect(walls.some((r) => inRect(n.pos, r)), n.charId).toBe(false);
-      f.pos = [n.pos[0] + 0.9, n.pos[1]];
-      expect(f.interact(), n.charId).toEqual({ t: 'talk', npc: n.charId });
+  const slots = ['morning', 'lunch', 'after'] as const;
+
+  it('どの時間も、人は壁の中になく、話しかけられる。昇降口で下校できる', () => {
+    for (const slot of slots) {
+      const f = new FieldState(SCHOOL, slot);
+      const walls = SCHOOL.walls;
+      for (const n of f.npcs.filter((x) => x.present)) {
+        if (n.def.charId) expect(GAME_DATA.characters[n.def.charId], n.def.id).toBeTruthy();
+        expect(walls.some((r) => inRect(n.pos, r)), `${slot} ${n.def.id}`).toBe(false);
+        for (const p of n.def.at[slot]?.route ?? []) expect(walls.some((r) => inRect(p, r)), `${slot} ${n.def.id} 道`).toBe(false);
+        f.pos = [n.pos[0] + 0.9, n.pos[1]];
+        const others = f.npcs.filter((x) => x !== n && x.present && Math.hypot(x.pos[0] - f.pos[0], x.pos[1] - f.pos[1]) < 1.6);
+        if (!others.length) expect(f.interact(), `${slot} ${n.def.id}`).toEqual({ t: 'talk', npc: n.def.id });
+      }
+      f.pos = [SCHOOL.exit!.pos[0] + 0.5, SCHOOL.exit!.pos[1]];
+      expect(f.interact()).toEqual({ t: 'exit' });
     }
-    f.pos = [SCHOOL.exit!.pos[0] - 0.5, SCHOOL.exit!.pos[1]];
-    expect(f.interact()).toEqual({ t: 'exit' });
-    expect(f.nearby()?.kind).not.toBe('boss'); // 学校にボスはいない
+  });
+
+  it('時間が変わると、仲間の居場所が変わる。いない人もいる', () => {
+    const f = new FieldState(SCHOOL, 'morning');
+    const shin = () => f.npcs.find((n) => n.def.id === 'shin')!;
+    const m = [...shin().pos];
+    f.setSlot('lunch');
+    expect(shin().pos).not.toEqual(m);
+    const shop = f.npcs.find((n) => n.def.id === 'shop')!;
+    f.setSlot('after');
+    expect(shop.present).toBe(false);
   });
 
   it('仲間の体はすり抜けない', () => {
     const n = SCHOOL.npcs![0];
-    const f = new FieldState({ ...SCHOOL, start: [n.pos[0] - 2, n.pos[1]], walls: [] });
+    const at = n.at.morning!;
+    const f = new FieldState({ ...SCHOOL, start: [at.pos[0] - 2, at.pos[1]], walls: [], npcs: [n] }, 'morning');
     for (let i = 0; i < 60; i++) f.update(0.05, { move: [1, 0], run: false });
-    expect(f.pos[0]).toBeLessThan(n.pos[0]);
+    expect(f.pos[0]).toBeLessThan(at.pos[0]);
+  });
+
+  it('歩きまわる人は、道にそって動く', () => {
+    const f = new FieldState(SCHOOL, 'lunch');
+    const teacher = f.npcs.find((n) => n.def.id === 'teacher')!;
+    const p0 = [...teacher.pos];
+    f.pos = [40, 25]; // 遠くにいる
+    for (let i = 0; i < 40; i++) f.update(0.05, { move: [0, 0], run: false });
+    expect(teacher.pos).not.toEqual(p0);
   });
 
   it('はじめの位置から、教室の戸を通って昇降口まで歩ける', () => {
@@ -185,5 +211,25 @@ describe('学校', () => {
     go(0, 1, 40); // 戸を抜けて廊下へ
     go(-1, 0, 200); // 廊下を西へ（昇降口）
     expect(f.nearby()?.kind).toBe('exit');
+  });
+});
+
+describe('学校：だれにでも話しかけられる', () => {
+  it('どの時間のどの人にも、立てる場所から話しかけられる', () => {
+    for (const slot of ['morning', 'lunch', 'after'] as const) {
+      const f = new FieldState(SCHOOL, slot);
+      for (const n of f.npcs.filter((x) => x.present)) {
+        let ok = false;
+        for (let dx = -1.6; dx <= 1.6 && !ok; dx += 0.2) {
+          for (let dz = -1.6; dz <= 1.6 && !ok; dz += 0.2) {
+            f.pos = [n.pos[0] + dx, n.pos[1] + dz];
+            const free = !f.solids().some((r) => inRect(f.pos, r) || (r.x - 0.35 < f.pos[0] && f.pos[0] < r.x + r.w + 0.35 && r.z - 0.35 < f.pos[1] && f.pos[1] < r.z + r.d + 0.35));
+            const it = f.nearby();
+            if (free && it?.kind === 'npc' && it.def.id === n.def.id) ok = true;
+          }
+        }
+        expect(ok, `${slot} ${n.def.id}`).toBe(true);
+      }
+    }
   });
 });

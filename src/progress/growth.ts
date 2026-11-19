@@ -234,6 +234,11 @@ export function talk(save: SaveData, charId: string): TalkResult {
   return { ok: true, lines, levelUp, level: after };
 }
 
+/** 学校の時間：仲間と話した回数で進む（0回＝朝、1回＝昼休み、2回から＝放課後） */
+export function slotOf(talksToday: number): 'morning' | 'lunch' | 'after' {
+  return talksToday <= 0 ? 'morning' : talksToday === 1 ? 'lunch' : 'after';
+}
+
 /** 夜になる（学校から帰る） */
 export function goNight(save: SaveData): void {
   save.phase = 'night';
