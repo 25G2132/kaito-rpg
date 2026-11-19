@@ -369,7 +369,7 @@ export function start(): void {
     hud.clearBattle();
     stage.clearEnemies();
     const state = new FieldState(MANSION);
-    const view = new FieldView(state, CHARACTERS[save.party[0]].look, vrms?.[0] ?? null);
+    const view = new FieldView(state, { playerLook: CHARACTERS[save.party[0]].look, vrm: vrms?.[0] ?? null });
     view.resize(window.innerWidth, window.innerHeight);
     const fh = new FieldHud({ onAttack: fieldAttack, onInteract: fieldInteract, onMenu: fieldMenu });
     fieldRun = { state, view, fh, hackT: null, busy: false, mapTick: 0 };

@@ -2,7 +2,7 @@
 // 歩く・壁にぶつかる・見回りとカメラが見る・影に隠れる・ハッキング・宝箱・戦いの始まり方。
 
 import type { Opening } from '../battle/battle';
-import type { CameraDef, ChestDef, MapDef, PatrolDef, Rect, TerminalDef, Vec2 } from './types';
+import type { CameraDef, ChestDef, MapDef, NpcDef, PatrolDef, Rect, TerminalDef, Vec2 } from './types';
 
 export const PLAYER_RADIUS = 0.35;
 export const WALK_SPEED = 3.0;
@@ -77,6 +77,8 @@ export type FieldEvent =
   | { t: 'chest'; chest: string; items: Record<string, number> }
   | { t: 'hacked'; terminal: string; targets: string[] }
   | { t: 'boss' }
+  | { t: 'talk'; npc: string } // 仲間に話しかけた
+  | { t: 'exit' } // 出口
   | { t: 'miss' }; // 攻撃が空ぶり
 
 export interface PatrolState {
@@ -105,7 +107,9 @@ export interface FieldInput {
 export type Interactable =
   | { kind: 'chest'; def: ChestDef }
   | { kind: 'terminal'; def: TerminalDef }
-  | { kind: 'boss' };
+  | { kind: 'boss' }
+  | { kind: 'npc'; def: NpcDef }
+  | { kind: 'exit'; label: string };
 
 export class FieldState {
   readonly map: MapDef;
@@ -137,7 +141,9 @@ export class FieldState {
 
   /** 体がぶつかるもの（壁と、閉まっている扉） */
   solids(): Rect[] {
-    return [...this.map.walls, ...this.map.doors.filter((d) => !this.openDoors.has(d.id))];
+    // 話しかけられる人も、ぶつかる（すり抜けない）
+    const people = (this.map.npcs ?? []).map((n) => ({ x: n.pos[0] - 0.3, z: n.pos[1] - 0.3, w: 0.6, d: 0.6 }));
+    return [...this.map.walls, ...this.map.doors.filter((d) => !this.openDoors.has(d.id)), ...people];
   }
 
   inShadow(p: Vec2 = this.pos): boolean {
@@ -259,7 +265,9 @@ export class FieldState {
     const cands: { d: number; it: Interactable }[] = [];
     for (const c of this.map.chests) if (!this.opened.has(c.id)) cands.push({ d: dist(c.pos, this.pos), it: { kind: 'chest', def: c } });
     for (const t of this.map.terminals) if (!this.hacked.has(t.id)) cands.push({ d: dist(t.pos, this.pos), it: { kind: 'terminal', def: t } });
-    cands.push({ d: dist(this.map.boss.pos, this.pos), it: { kind: 'boss' } });
+    if (this.map.boss) cands.push({ d: dist(this.map.boss.pos, this.pos), it: { kind: 'boss' } });
+    for (const n of this.map.npcs ?? []) cands.push({ d: dist(n.pos, this.pos), it: { kind: 'npc', def: n } });
+    if (this.map.exit) cands.push({ d: dist(this.map.exit.pos, this.pos), it: { kind: 'exit', label: this.map.exit.label } });
     const best = cands.filter((c) => c.d <= INTERACT_RANGE).sort((a, b) => a.d - b.d)[0];
     return best?.it ?? null;
   }
@@ -281,6 +289,8 @@ export class FieldState {
       }
       return { t: 'hacked', terminal: it.def.id, targets: [...it.def.targets] };
     }
+    if (it.kind === 'npc') return { t: 'talk', npc: it.def.charId };
+    if (it.kind === 'exit') return { t: 'exit' };
     return { t: 'boss' };
   }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { GAME_DATA } from '../data';
-import { MANSION } from '../data/maps';
+import { MANSION, SCHOOL } from '../data/maps';
 import { canSee, FieldState, inRect, segmentHitsRect } from './logic';
 import type { MapDef, Vec2 } from './types';
 
@@ -152,5 +152,38 @@ describe('黒金邸：端末は影の中', () => {
       }
       expect(ok, t.id).toBe(true);
     }
+  });
+});
+
+describe('学校', () => {
+  it('仲間は壁の中になく、話しかけられる。昇降口で下校できる', () => {
+    const f = new FieldState(SCHOOL);
+    const walls = SCHOOL.walls;
+    for (const n of SCHOOL.npcs ?? []) {
+      expect(GAME_DATA.characters[n.charId], n.charId).toBeTruthy();
+      expect(walls.some((r) => inRect(n.pos, r)), n.charId).toBe(false);
+      f.pos = [n.pos[0] + 0.9, n.pos[1]];
+      expect(f.interact(), n.charId).toEqual({ t: 'talk', npc: n.charId });
+    }
+    f.pos = [SCHOOL.exit!.pos[0] - 0.5, SCHOOL.exit!.pos[1]];
+    expect(f.interact()).toEqual({ t: 'exit' });
+    expect(f.nearby()?.kind).not.toBe('boss'); // 学校にボスはいない
+  });
+
+  it('仲間の体はすり抜けない', () => {
+    const n = SCHOOL.npcs![0];
+    const f = new FieldState({ ...SCHOOL, start: [n.pos[0] - 2, n.pos[1]], walls: [] });
+    for (let i = 0; i < 60; i++) f.update(0.05, { move: [1, 0], run: false });
+    expect(f.pos[0]).toBeLessThan(n.pos[0]);
+  });
+
+  it('はじめの位置から、教室の戸を通って昇降口まで歩ける', () => {
+    const f = new FieldState(SCHOOL);
+    const go = (dx: number, dz: number, steps: number) => {
+      for (let i = 0; i < steps; i++) f.moveBy(dx * 0.1, dz * 0.1);
+    };
+    go(0, 1, 40); // 戸を抜けて廊下へ
+    go(1, 0, 200); // 廊下を東へ
+    expect(f.nearby()?.kind).toBe('exit');
   });
 });

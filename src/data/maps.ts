@@ -15,7 +15,7 @@ import type { MapDef, WallDef } from '../field/types';
 const T = 0.4; // 壁の厚さ
 const wall = (x: number, z: number, w: number, d: number, kind: WallDef['kind'] = 'wall', h = 3): WallDef => ({ x, z, w, d, kind, h });
 
-export const MANSION: MapDef = {
+export const MANSION: MapDef & { boss: NonNullable<MapDef['boss']> } = {
   id: 'mansion',
   name: '黒金邸',
   start: [8, 1.6],
@@ -96,4 +96,63 @@ export const MANSION: MapDef = {
   boss: { pos: [37.5, 25], encounter: 'vault', name: '金庫室の番人' },
 };
 
-export const MAPS: Record<string, MapDef> = { mansion: MANSION };
+// 昼の学校（拠点）。仲間に話しかけると絆が上がる。廊下の端の昇降口から下校すると夜。
+//
+//   z=0 ┌────────┬───────────┐
+//       │  教室   │   中庭     │
+//  z=10 ├──  ────┴──   ───────┤
+//       │        廊下      昇降口│
+//  z=14 └────────────────────┘
+//      x=0     x=14         x=30
+const desk = (x: number, z: number) => wall(x, z, 1.1, 0.7, 'desk', 0.8);
+
+export const SCHOOL: MapDef = {
+  id: 'school',
+  name: '学校',
+  start: [11, 8.6],
+  startDir: -Math.PI / 2,
+  areas: [
+    { name: '教室', x: 0, z: 0, w: 14, d: 10, floor: '#6a5640' },
+    { name: '中庭', x: 14, z: 0, w: 16, d: 10, floor: '#35553a' },
+    { name: '廊下', x: 0, z: 10, w: 30, d: 4, floor: '#565b68' },
+  ],
+  walls: [
+    wall(-T, -T, 30 + 2 * T, T), // 北（窓側）
+    wall(-T, 0, T, 14), // 西
+    wall(-T, 14, 30 + 2 * T, T), // 南
+    wall(30, 0, T, 14), // 東
+    wall(14, 0, T, 10), // 教室と中庭の間
+    // 教室と廊下の間（x 10〜12 が戸）
+    wall(0, 10, 10, T),
+    wall(12, 10, 2.4, T),
+    // 中庭と廊下の間（x 20〜23 が出入り口）
+    wall(14, 10, 6, T),
+    wall(23, 10, 7, T),
+    // 机（3列×2行）と教卓
+    desk(2, 3),
+    desk(5, 3),
+    desk(8, 3),
+    desk(2, 5.5),
+    desk(5, 5.5),
+    desk(8, 5.5),
+    wall(5.5, 0.6, 2, 0.8, 'desk', 1.0),
+    // 中庭の花だんとベンチ
+    wall(17, 2, 3, 1, 'hedge', 0.7),
+    wall(25, 2, 3, 1, 'hedge', 0.7),
+    wall(20.5, 6.5, 3, 0.6, 'desk', 0.5),
+  ],
+  doors: [],
+  shadows: [],
+  terminals: [],
+  cameras: [],
+  patrols: [],
+  chests: [],
+  npcs: [
+    { charId: 'shin', pos: [2.6, 7.6], dir: 0 },
+    { charId: 'yuki', pos: [9.5, 1.6], dir: Math.PI / 2 },
+    { charId: 'hayate', pos: [22, 4.6], dir: Math.PI },
+  ],
+  exit: { pos: [28.6, 12], label: '下校する（夜へ）' },
+};
+
+export const MAPS: Record<string, MapDef> = { mansion: MANSION, school: SCHOOL };

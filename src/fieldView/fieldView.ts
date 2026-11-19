@@ -4,12 +4,13 @@ import type { LookDef } from '../battle/types';
 import { ENEMIES } from '../data/enemies';
 import { ActorView } from '../battleView/actor';
 import { segmentHitsRect, type FieldState } from '../field/logic';
-import type { Rect } from '../field/types';
+import type { NpcDef, Rect } from '../field/types';
+import { CHARACTERS } from '../data/characters';
 
 // 歩く場所の3D。形はすべてプログラムで作る（外の素材なし）。
 // 見回りとカメラの「見える範囲」は床に扇の形で出す。影は床の暗い部分。
 
-const WALL_COLORS = { wall: 0x4a4458, hedge: 0x2f5a35, shelf: 0x5a4632 } as const;
+const WALL_COLORS = { wall: 0x4a4458, hedge: 0x2f5a35, shelf: 0x5a4632, desk: 0x8a6a48 } as const;
 const PITCH = 0.95; // カメラの見下ろす角度
 const CAM_DIST = 8.5;
 
@@ -43,14 +44,21 @@ export class FieldView {
   private ring: THREE.Mesh;
   private lastHidden = false;
   private walls: { mesh: THREE.Mesh; rect: Rect }[] = [];
+  private npcs: { def: NpcDef; actor: ActorView }[] = [];
 
-  constructor(state: FieldState, playerLook: LookDef, vrm: VRM | null) {
+  constructor(
+    state: FieldState,
+    opts: { playerLook: LookDef; vrm: VRM | null; day?: boolean; npcVrms?: Record<string, VRM | null> },
+  ) {
     this.state = state;
+    const { playerLook, vrm, day } = opts;
     const s = this.scene;
-    s.background = new THREE.Color(0x0e111c);
-    s.fog = new THREE.Fog(0x0e111c, 18, 40);
-    s.add(new THREE.HemisphereLight(0x8899cc, 0x1a1420, 1.0));
-    this.moon = new THREE.DirectionalLight(0xdfe6ff, 1.8);
+    // 昼（学校）は明るく、夜（忍び込む）は暗く
+    const sky = day ? 0x9cc4ec : 0x0e111c;
+    s.background = new THREE.Color(sky);
+    s.fog = new THREE.Fog(sky, day ? 30 : 18, day ? 60 : 40);
+    s.add(day ? new THREE.HemisphereLight(0xffffff, 0x6a6050, 1.8) : new THREE.HemisphereLight(0x8899cc, 0x1a1420, 1.0));
+    this.moon = new THREE.DirectionalLight(day ? 0xfff2dd : 0xdfe6ff, day ? 2.4 : 1.8);
     this.moon.castShadow = true;
     this.moon.shadow.mapSize.set(1024, 1024);
     Object.assign(this.moon.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12, near: 1, far: 40 });
@@ -119,13 +127,43 @@ export class FieldView {
       this.chests.set(c.id, g);
     }
     // ボスの扉
-    const b = map.boss.pos;
-    const gate = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.6, 0.3), new THREE.MeshStandardMaterial({ color: 0x302040, emissive: 0x7a30ff, emissiveIntensity: 0.5, metalness: 0.6 }));
-    gate.position.set(b[0], 1.3, b[1] + 1.2);
-    s.add(gate);
-    const glow = new THREE.PointLight(0x9a50ff, 6, 6);
-    glow.position.set(b[0], 1.5, b[1]);
-    s.add(glow);
+    if (map.boss) {
+      const b = map.boss.pos;
+      const gate = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.6, 0.3), new THREE.MeshStandardMaterial({ color: 0x302040, emissive: 0x7a30ff, emissiveIntensity: 0.5, metalness: 0.6 }));
+      gate.position.set(b[0], 1.3, b[1] + 1.2);
+      s.add(gate);
+      const glow = new THREE.PointLight(0x9a50ff, 6, 6);
+      glow.position.set(b[0], 1.5, b[1]);
+      s.add(glow);
+    }
+    // 出口（学校の昇降口など）
+    if (map.exit) {
+      const e = map.exit.pos;
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.6, 0.9, 32), new THREE.MeshBasicMaterial({ color: 0xffd25a, transparent: true, opacity: 0.8 }));
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(e[0], 0.04, e[1]);
+      s.add(ring);
+      const light = new THREE.PointLight(0xffd25a, 4, 5);
+      light.position.set(e[0], 1.5, e[1]);
+      s.add(light);
+    }
+
+    // 話しかけられる仲間（名前を頭の上に出す）
+    for (const n of map.npcs ?? []) {
+      const c = CHARACTERS[n.charId];
+      if (!c) continue;
+      const actor = new ActorView(c.look, 1);
+      const v = opts.npcVrms?.[n.charId];
+      if (v) actor.setVrm(v);
+      actor.root.position.set(n.pos[0], 0, n.pos[1]);
+      actor.root.rotation.y = -n.dir;
+      const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture(c.name, c.look.color), depthTest: false }));
+      label.scale.set(1.6, 0.4, 1);
+      label.position.y = actor.height + 0.55;
+      actor.root.add(label);
+      s.add(actor.root);
+      this.npcs.push({ def: n, actor });
+    }
 
     // 見回り
     for (const p of state.patrols) {
@@ -181,6 +219,14 @@ export class FieldView {
     }
     this.player.update(this.time, dt);
 
+    // 仲間は、近くに来るとこちらを向く
+    for (const n of this.npcs) {
+      const dx = px - n.def.pos[0];
+      const dz = pz - n.def.pos[1];
+      const want = Math.hypot(dx, dz) < 3 ? Math.atan2(dz, dx) : n.def.dir;
+      n.actor.root.rotation.y = -want;
+      n.actor.update(this.time, dt);
+    }
     for (const p of st.patrols) {
       const v = this.patrols.get(p.def.id)!;
       const vis = !p.defeated;
@@ -262,6 +308,7 @@ export class FieldView {
 
   dispose(): void {
     this.player.setVrm(undefined);
+    for (const n of this.npcs) n.actor.setVrm(undefined);
   }
 }
 
@@ -278,5 +325,25 @@ function textTexture(text: string, color: string): THREE.CanvasTexture {
   g.textAlign = 'center';
   g.textBaseline = 'middle';
   g.fillText(text, 32, 34);
+  return new THREE.CanvasTexture(c);
+}
+
+function labelTexture(text: string, color: string): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 64;
+  const g = c.getContext('2d')!;
+  g.fillStyle = 'rgba(16,19,32,0.85)';
+  g.beginPath();
+  g.roundRect(4, 8, 248, 48, 20);
+  g.fill();
+  g.strokeStyle = color;
+  g.lineWidth = 4;
+  g.stroke();
+  g.fillStyle = '#fff';
+  g.font = 'bold 30px sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(text, 128, 34);
   return new THREE.CanvasTexture(c);
 }

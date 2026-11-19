@@ -182,7 +182,11 @@ export class FieldHud {
     const g = this.mini.getContext('2d')!;
     const W = this.mini.width;
     const H = this.mini.height;
-    const minX = -0.5, maxX = 40.5, minZ = -0.5, maxZ = 28.5;
+    // 地図の広さは、場所（エリア）から決める
+    const minX = Math.min(...st.map.areas.map((a) => a.x)) - 0.5;
+    const maxX = Math.max(...st.map.areas.map((a) => a.x + a.w)) + 0.5;
+    const minZ = Math.min(...st.map.areas.map((a) => a.z)) - 0.5;
+    const maxZ = Math.max(...st.map.areas.map((a) => a.z + a.d)) + 0.5;
     const s = Math.min(W / (maxX - minX), H / (maxZ - minZ));
     const X = (x: number) => (x - minX) * s;
     const Z = (z: number) => (z - minZ) * s;
@@ -220,10 +224,22 @@ export class FieldHud {
       g.fillStyle = '#ffc93d';
       g.fillRect(X(c.pos[0]) - 3, Z(c.pos[1]) - 3, 6, 6);
     }
-    g.fillStyle = '#b070ff';
-    g.beginPath();
-    g.arc(X(st.map.boss.pos[0]), Z(st.map.boss.pos[1]), 6, 0, Math.PI * 2);
-    g.fill();
+    if (st.map.boss) {
+      g.fillStyle = '#b070ff';
+      g.beginPath();
+      g.arc(X(st.map.boss.pos[0]), Z(st.map.boss.pos[1]), 6, 0, Math.PI * 2);
+      g.fill();
+    }
+    for (const n of st.map.npcs ?? []) {
+      g.fillStyle = '#5ef0a0';
+      g.beginPath();
+      g.arc(X(n.pos[0]), Z(n.pos[1]), 5, 0, Math.PI * 2);
+      g.fill();
+    }
+    if (st.map.exit) {
+      g.fillStyle = '#ffd25a';
+      g.fillRect(X(st.map.exit.pos[0]) - 4, Z(st.map.exit.pos[1]) - 4, 8, 8);
+    }
     for (const p of st.patrols) {
       if (p.defeated) continue;
       cone(p.pos[0], p.pos[1], p.dir, p.def.fov, p.def.range, p.alerted ? 'rgba(255,60,60,0.35)' : 'rgba(255,210,64,0.25)');

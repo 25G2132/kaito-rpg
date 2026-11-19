@@ -13,7 +13,7 @@ export interface Rect {
 
 export interface WallDef extends Rect {
   h?: number; // 高さ（見た目。生け垣は低い）
-  kind?: 'wall' | 'hedge' | 'shelf';
+  kind?: 'wall' | 'hedge' | 'shelf' | 'desk';
 }
 
 export interface DoorDef extends Rect {
@@ -75,5 +75,14 @@ export interface MapDef {
   cameras: CameraDef[];
   patrols: PatrolDef[];
   chests: ChestDef[];
-  boss: { pos: Vec2; encounter: string; name: string };
+  boss?: { pos: Vec2; encounter: string; name: string };
+  npcs?: NpcDef[]; // 話しかけられる人（学校）
+  exit?: { pos: Vec2; label: string }; // 出口（学校なら「下校する」）
+}
+
+/** 話しかけられる人。charId は仲間のキャラ */
+export interface NpcDef {
+  charId: string;
+  pos: Vec2;
+  dir: number;
 }
