@@ -14,6 +14,7 @@ import { GameClock } from '../battleView/clock';
 import { Hud } from '../battleView/hud';
 import { Stage } from '../battleView/stage';
 import { PerfHud } from '../dev/perfHud';
+import { goNight, sleep, talk, talksToNext, TALKS_PER_DAY } from '../progress/growth';
 import { applyRewards, autoInvest, isUnlocked, partyFor, partyPower, recordLoss, rollRewards, type Reward } from '../progress/growth';
 import { defaultSave, loadSave, storeSave } from '../progress/save';
 import { ITEMS } from '../data/items';
@@ -21,7 +22,8 @@ import { esc, matsHtml, oddsText, slotName, stars } from '../ui/fmt';
 import { GrowthView } from '../ui/growthView';
 import { watchOrientation } from '../ui/orientation';
 import '../fieldView/field.css';
-import { MANSION } from '../data/maps';
+import { MANSION, SCHOOL } from '../data/maps';
+import { showTalk } from '../ui/talkView';
 import { FieldState, type FieldEvent } from '../field/logic';
 import type { Vec2 } from '../field/types';
 import { FieldHud } from '../fieldView/fieldHud';
@@ -165,7 +167,8 @@ export function start(): void {
     hubEl.className = 'screen hub';
     hubEl.innerHTML = `<div class="hub-main">
       <div class="row"><div class="grow"><div class="hub-title">第1章　夜の金庫室</div>
-        <div class="power">チーム戦力 ${power}</div></div>
+        <div class="power">${save.day}日目の夜　チーム戦力 ${power}</div></div>
+        <button class="btn" data-act="sleep">寝る<small>次の日の昼へ</small></button>
         <button class="btn gold" data-act="grow">育てる</button></div>
       ${notice}
       <div class="mats">${matsHtml(save.items)}</div>
@@ -185,6 +188,11 @@ export function start(): void {
       }
       else if (t.dataset.act === 'grow') openGrowth();
       else if (t.dataset.act === 'infiltrate') startInfiltration();
+      else if (t.dataset.act === 'sleep') {
+        sleep(save);
+        persist();
+        startSchool();
+      }
       else if (t.dataset.act === 'vrm') picker.click();
       else if (t.dataset.act === 'reset') {
         if (window.confirm('育てたデータをすべて消して、はじめからにします。よいですか？')) {
@@ -358,7 +366,9 @@ export function start(): void {
     fh: FieldHud;
     hackT: number | null; // ハッキング中の時間
     busy: boolean; // 戦いの間は止める
+    talking: boolean; // 会話の間は止める（画面は出したまま）
     mapTick: number;
+    kind: 'mansion' | 'school';
   }
   let fieldRun: FieldRun | null = null;
   const HACK_TIME = 1.2;
@@ -372,8 +382,57 @@ export function start(): void {
     const view = new FieldView(state, { playerLook: CHARACTERS[save.party[0]].look, vrm: vrms?.[0] ?? null });
     view.resize(window.innerWidth, window.innerHeight);
     const fh = new FieldHud({ onAttack: fieldAttack, onInteract: fieldInteract, onMenu: fieldMenu });
-    fieldRun = { state, view, fh, hackT: null, busy: false, mapTick: 0 };
+    fieldRun = { state, view, fh, hackT: null, busy: false, talking: false, mapTick: 0, kind: 'mansion' };
     fh.banner(`${MANSION.name}に忍び込んだ。影の中なら見つからない`, 'info');
+  }
+
+  // ---- 昼の学校 ----
+  function startSchool(note = ''): void {
+    endInfiltration();
+    closeHub();
+    hud.closeOverlay();
+    hud.clearBattle();
+    stage.clearEnemies();
+    stage.showParty([], null); // VRM を学校の人にわたす
+    const state = new FieldState(SCHOOL);
+    const npcVrms: Record<string, VRM | null> = {};
+    save.party.forEach((id, i) => (npcVrms[id] = vrms?.[i] ?? null));
+    const view = new FieldView(state, { playerLook: CHARACTERS[save.party[0]].look, vrm: vrms?.[0] ?? null, day: true, npcVrms });
+    view.resize(window.innerWidth, window.innerHeight);
+    const fh = new FieldHud({ onAttack: () => {}, onInteract: fieldInteract, onMenu: schoolMenu }, { school: true, menuLabel: '下校' });
+    fieldRun = { state, view, fh, hackT: null, busy: false, talking: false, mapTick: 0, kind: 'school' };
+    fh.banner(note || `${save.day}日目の昼。仲間に話しかけると絆が深まる（1日${TALKS_PER_DAY}回）`, 'info');
+  }
+
+  function leaveSchool(): void {
+    goNight(save);
+    persist();
+    endInfiltration();
+    showHub(`${save.day}日目の夜。怪盗の時間だ`);
+  }
+
+  function schoolMenu(): void {
+    if (!fieldRun || fieldRun.talking) return;
+    if (window.confirm('下校して、夜にしますか？')) leaveSchool();
+  }
+
+  async function doTalk(charId: string): Promise<void> {
+    const r = fieldRun;
+    if (!r) return;
+    r.talking = true;
+    const name = CHARACTERS[charId].name;
+    const res = talk(save, charId);
+    if (!res.ok) {
+      await showTalk([name, 'きょうはもう帰る時間だよ。また明日ね。'], '昇降口から下校すると夜になる');
+    } else {
+      persist();
+      const next = talksToNext(save, charId);
+      const after = res.levelUp
+        ? `${name}との絆が <b>Lv${res.level}</b> になった！<br>${res.levelUp.desc}`
+        : `${name}との絆が深まった（Lv${res.level}${next ? `・次まであと${next}回` : '・最大'}）`;
+      await showTalk(res.lines, after);
+    }
+    r.talking = false;
   }
 
   function endInfiltration(): void {
@@ -423,6 +482,14 @@ export function start(): void {
       r.hackT = 0; // 少し時間がかかる（その間に見つかることもある）
       return;
     }
+    if (it.kind === 'npc') {
+      void doTalk(it.def.charId);
+      return;
+    }
+    if (it.kind === 'exit') {
+      leaveSchool();
+      return;
+    }
     if (it.kind === 'boss') {
       save.flags[`${MANSION.boss.encounter}_reached`] = 1;
       persist();
@@ -468,6 +535,8 @@ export function start(): void {
         return true;
       case 'miss':
       case 'boss':
+      case 'talk':
+      case 'exit':
         break;
     }
     return false;
@@ -475,6 +544,10 @@ export function start(): void {
 
   function fieldTick(real: number): void {
     const r = fieldRun!;
+    if (r.talking) {
+      stage.renderer.render(r.view.scene, r.view.camera);
+      return;
+    }
     r.view.yaw += r.fh.takeYaw();
     let move: Vec2 = [0, 0];
     if (r.hackT === null) {
@@ -505,7 +578,19 @@ export function start(): void {
     r.fh.setArea(r.state.areaName());
     r.fh.setHidden(hidden);
     const it = r.state.nearby();
-    r.fh.setInteract(it ? (it.kind === 'chest' ? '宝箱を開ける' : it.kind === 'terminal' ? 'ハッキング' : '番人に挑む') : null);
+    const label = !it
+      ? null
+      : it.kind === 'chest'
+        ? '宝箱を開ける'
+        : it.kind === 'terminal'
+          ? 'ハッキング'
+          : it.kind === 'npc'
+            ? `${CHARACTERS[it.def.charId].name}と話す`
+            : it.kind === 'exit'
+              ? it.label
+              : '番人に挑む';
+    r.fh.setInteract(label);
+    if (r.kind === 'school') r.fh.setStatus(`${save.day}日目の昼　話せる回数 あと${TALKS_PER_DAY - save.talksToday}`);
     if (++r.mapTick % 3 === 0) r.fh.drawMap(r.state);
     stage.renderer.render(r.view.scene, r.view.camera);
   }
@@ -535,7 +620,9 @@ export function start(): void {
   // 開発サーバーだけ：確かめ用に、戦いを一瞬で終わらせる（公開ページには入らない）
   if (import.meta.env.DEV) Object.assign(window, { __kaito: { field: () => fieldRun, skip: skipBattle, save: () => save, invest: () => autoInvest(save, rng), hud } });
 
-  showHub(loaded.reset ? '保存データが読めなかったので、はじめからにしました' : '');
+  // 昼なら学校から、夜なら拠点から始める
+  if (save.phase === 'day') startSchool(loaded.reset ? '保存データが読めなかったので、はじめからにしました' : '');
+  else showHub(loaded.reset ? '保存データが読めなかったので、はじめからにしました' : '');
   // 開発サーバーでは見本の VRM を自動で読む（公開ページには置いていないので、無ければ仮の形のまま）
   void (async () => {
     if (params.has('novrm')) return;
@@ -544,6 +631,7 @@ export function start(): void {
       if (!res.ok || (res.headers.get('content-type') ?? '').includes('text/html')) return;
       await loadVrm(await res.arrayBuffer(), 'models/sample-a.vrm');
       if (hubEl) showHub();
+      else if ((fieldRun as FieldRun | null)?.kind === 'school' && !(fieldRun as FieldRun | null)?.talking) startSchool();
     } catch {
       /* 無ければ仮の形 */
     }

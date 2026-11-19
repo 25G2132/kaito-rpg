@@ -25,6 +25,7 @@ export class FieldHud {
   private area = document.createElement('div');
   private hidden = document.createElement('div');
   private hack = document.createElement('div');
+  private status = document.createElement('div');
   private mini = document.createElement('canvas');
   private stickId: number | null = null;
   private stickOrigin: [number, number] = [0, 0];
@@ -41,9 +42,10 @@ export class FieldHud {
   };
   private onKeyUp = (e: KeyboardEvent) => this.keys.delete(e.code);
 
-  constructor(h: FieldHudHandlers) {
+  constructor(h: FieldHudHandlers, opts: { school?: boolean; menuLabel?: string } = {}) {
     this.h = h;
-    this.root.className = 'fhud';
+    this.root.className = opts.school ? 'fhud school' : 'fhud';
+    this.status.className = 'fstatus';
     this.touch.className = 'fhud-touch';
     this.stickBase.className = 'stick';
     this.stickKnob.className = 'knob';
@@ -58,7 +60,7 @@ export class FieldHud {
 
     const menu = document.createElement('button');
     menu.className = 'fbtn fmenu';
-    menu.textContent = '拠点へ';
+    menu.textContent = opts.menuLabel ?? '拠点へ';
     menu.addEventListener('click', () => h.onMenu());
 
     const atk = document.createElement('button');
@@ -74,7 +76,7 @@ export class FieldHud {
       this.runBtn.classList.toggle('on', this.run);
     });
 
-    this.root.append(this.touch, this.stickBase, this.area, this.hidden, this.hack, this.mini, menu, atk, this.interactBtn, this.runBtn);
+    this.root.append(this.touch, this.stickBase, this.area, this.status, this.hidden, this.hack, this.mini, menu, atk, this.interactBtn, this.runBtn);
     document.body.appendChild(this.root);
     this.setInteract(null);
     this.setHack(null);
@@ -160,6 +162,9 @@ export class FieldHud {
   }
   setArea(name: string): void {
     if (this.area.textContent !== name) this.area.textContent = name;
+  }
+  setStatus(text: string): void {
+    if (this.status.textContent !== text) this.status.textContent = text;
   }
   setHidden(on: boolean): void {
     this.hidden.classList.toggle('on', on);

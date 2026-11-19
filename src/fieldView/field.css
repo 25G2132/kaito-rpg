@@ -179,3 +179,70 @@
 .fbanner.info {
   font-size: 15px;
 }
+
+/* ---- 学校（昼） ---- */
+.fhud.school .fatk {
+  display: none;
+}
+.fstatus {
+  position: absolute;
+  top: calc(max(8px, env(safe-area-inset-top)) + 26px);
+  left: max(10px, env(safe-area-inset-left));
+  padding: 3px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 800;
+  background: rgba(16, 19, 32, 0.75);
+}
+.fstatus:empty {
+  display: none;
+}
+
+/* ---- 会話 ---- */
+.talk {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 max(12px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  background: linear-gradient(transparent 50%, rgba(0, 0, 0, 0.45));
+  font-family: system-ui, -apple-system, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+  color: #fff;
+}
+.talk-box {
+  position: relative;
+  width: min(760px, 100%);
+  min-height: 92px;
+  padding: 22px 18px 14px;
+  border-radius: 14px;
+  background: rgba(14, 17, 30, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-sizing: border-box;
+}
+.talk-name {
+  position: absolute;
+  top: -14px;
+  left: 14px;
+  padding: 3px 14px;
+  border-radius: 8px;
+  font-weight: 900;
+  font-size: 14px;
+  color: #10131e;
+}
+.talk-text {
+  font-size: 16px;
+  line-height: 1.6;
+}
+.talk-text b {
+  color: #ffd25a;
+}
+.talk-next {
+  position: absolute;
+  right: 14px;
+  bottom: 6px;
+  font-size: 10px;
+  opacity: 0.6;
+  animation: pulse 0.8s infinite alternate;
+}

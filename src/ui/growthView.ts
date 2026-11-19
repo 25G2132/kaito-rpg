@@ -21,11 +21,13 @@ import {
   useBooks,
 } from '../progress/growth';
 import type { GearPiece, SaveData } from '../progress/save';
+import { BOND_MAX, BOND_NEED, BONDS } from '../data/bonds';
+import { bondOf, talksToNext, TALKS_PER_DAY } from '../progress/growth';
 import { esc, fmtStat, matsHtml, stars, toast } from './fmt';
 
 // 育成の画面。どのボタンにも「押すと何がどれだけ上がるか」を数字で出す。
 
-type Sub = 'level' | 'skill' | 'weapon' | 'gear';
+type Sub = 'level' | 'skill' | 'weapon' | 'gear' | 'bond';
 const SHOWN: (keyof Stats)[] = ['hp', 'atk', 'def', 'spd', 'critRate', 'critDmg'];
 
 export class GrowthView {
@@ -106,6 +108,7 @@ export class GrowthView {
       ['skill', '技'],
       ['weapon', '武器'],
       ['gear', '装備'],
+      ['bond', '絆'],
     ];
     const subTabs = subs
       .map(([k, n]) => `<button class="tab${k === this.sub ? ' on' : ''}" data-a="${this.act(() => {
@@ -114,7 +117,7 @@ export class GrowthView {
         this.el.querySelector('.pane')!.scrollTop = 0;
       })}">${n}</button>`)
       .join('');
-    const pane = this.sub === 'level' ? this.levelPane() : this.sub === 'skill' ? this.skillPane() : this.sub === 'weapon' ? this.weaponPane() : this.gearPane();
+    const pane = this.sub === 'level' ? this.levelPane() : this.sub === 'skill' ? this.skillPane() : this.sub === 'weapon' ? this.weaponPane() : this.sub === 'gear' ? this.gearPane() : this.bondPane();
     this.el.innerHTML = `
       <div class="row">
         <button class="btn" data-a="${this.act(() => this.onClose())}">もどる</button>
@@ -306,6 +309,23 @@ export class GrowthView {
       ${detail}
       <div class="muted">${slotName(this.slot)}の装備（${s.gear.filter((g) => g.slot === this.slot).length}個）${s.gear.length ? '' : '：「夜の見回り」で手に入る'}</div>
       <div class="gearlist">${others}</div>`;
+  }
+
+  private bondPane(): string {
+    const id = this.charId;
+    const def = BONDS[id];
+    if (!def) return '<div class="card">主人公。昼の学校で仲間と話して絆を深めると、チームが強くなる。</div>';
+    const lv = bondOf(this.save, id);
+    const next = talksToNext(this.save, id);
+    const rows = def.rewards
+      .map((r) => {
+        const open = r.level <= lv;
+        return `<div class="card"><b>${open ? '✓' : '🔒'} Lv${r.level}</b>　${esc(r.desc)}${open ? '' : ` <span class="muted">（話した回数 ${BOND_NEED[r.level]}回で開く）</span>`}</div>`;
+      })
+      .join('');
+    return `<div class="card"><b class="t">絆 Lv${lv} / ${BOND_MAX}</b>　${esc(def.title)}<br>
+        話した回数 ${this.save.bonds[id] ?? 0}回　${next ? `次のレベルまであと${next}回` : '最大'}<br>
+        <span class="muted">昼の学校で話しかけると上がる（1日${TALKS_PER_DAY}回まで）</span></div>${rows}`;
   }
 
   private gainEnhanceMain(g: GearPiece): string {
