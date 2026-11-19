@@ -44,6 +44,8 @@ export interface SaveData {
   phase: 'day' | 'night'; // 昼（学校）か夜（怪盗）
   talksToday: number; // きょう話した回数
   seen: Record<string, number>; // 怪盗手帳：倒した（出会った）敵の数
+  questState: Record<string, number>; // 頼みごと：1＝受けた、2＝解決
+  questBase: Record<string, number>; // 頼みごと：受けたときの数
   losses: Record<string, number>;
 }
 
@@ -66,6 +68,8 @@ export function defaultSave(): SaveData {
     phase: 'day',
     talksToday: 0,
     seen: {},
+    questState: {},
+    questBase: {},
     losses: {},
   };
 }
@@ -116,6 +120,9 @@ export function validateSave(raw: unknown): SaveData | null {
   if (raw.phase !== 'day' && raw.phase !== 'night') return null;
   if (raw.seen === undefined) raw.seen = {};
   if (!isCountMap(raw.seen)) return null;
+  if (raw.questState === undefined) raw.questState = {};
+  if (raw.questBase === undefined) raw.questBase = {};
+  if (!isCountMap(raw.questState) || !isCountMap(raw.questBase)) return null;
   const save = raw as unknown as SaveData;
   // 新しいキャラが足されたときは、その人だけ初期値で足す
   for (const id of DEFAULT_PARTY) save.chars[id] ??= { level: START_LEVEL, exp: 0, asc: 0, skill: 1, weapon: null };

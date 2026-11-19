@@ -45,13 +45,15 @@ export class FieldView {
   private ring: THREE.Mesh;
   private lastHidden = false;
   private walls: { mesh: THREE.Mesh; rect: Rect }[] = [];
-  private npcs: { def: NpcDef; actor: ActorView }[] = [];
+  private npcs: { def: NpcDef; actor: ActorView; marks: Record<'!' | '?', THREE.Sprite> }[] = [];
+  private npcMark?: (id: string) => '!' | '?' | null;
 
   constructor(
     state: FieldState,
-    opts: { playerLook: LookDef; vrm: VRM | null; day?: boolean; npcVrms?: Record<string, VRM | null> },
+    opts: { playerLook: LookDef; vrm: VRM | null; day?: boolean; npcVrms?: Record<string, VRM | null>; npcMark?: (id: string) => '!' | '?' | null },
   ) {
     this.state = state;
+    this.npcMark = opts.npcMark;
     const { playerLook, vrm, day } = opts;
     const s = this.scene;
     // 昼（学校）は明るく、夜（忍び込む）は暗く
@@ -187,8 +189,17 @@ export class FieldView {
       label.scale.set(1.6, 0.4, 1);
       label.position.y = actor.height + 0.55;
       actor.root.add(label);
+      const mk = (t: string, c: string) => {
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: textTexture(t, c), depthTest: false }));
+        sp.scale.set(0.7, 0.7, 1);
+        sp.position.y = actor.height + 1.1;
+        sp.visible = false;
+        actor.root.add(sp);
+        return sp;
+      };
+      const marks = { '!': mk('！', '#ffb020'), '?': mk('？', '#30c070') };
       s.add(actor.root);
-      this.npcs.push({ def: n, actor });
+      this.npcs.push({ def: n, actor, marks });
     }
 
     // 見回り
@@ -251,6 +262,10 @@ export class FieldView {
       n.actor.root.visible = !!s?.present;
       if (!s?.present) continue;
       n.actor.root.position.set(s.pos[0], 0, s.pos[1]);
+      const mark = this.npcMark?.(n.def.id) ?? null;
+      n.marks['!'].visible = mark === '!';
+      n.marks['?'].visible = mark === '?';
+      if (mark) n.marks[mark].position.y = n.actor.height + 1.1 + Math.sin(this.time * 4) * 0.08;
       const dx = px - s.pos[0];
       const dz = pz - s.pos[1];
       const near = Math.hypot(dx, dz) < 3;

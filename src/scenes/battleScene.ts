@@ -23,6 +23,7 @@ import { esc, matsHtml, oddsText, slotName, stars } from '../ui/fmt';
 import { GrowthView } from '../ui/growthView';
 import { openFormation } from '../ui/formationView';
 import { openNotebook } from '../ui/notebookView';
+import { acceptQuest, completeQuest, questMark, questOf, questState } from '../progress/quests';
 import { watchOrientation } from '../ui/orientation';
 import '../fieldView/field.css';
 import { MANSION, SCHOOL } from '../data/maps';
@@ -434,7 +435,7 @@ export function start(): void {
     const state = new FieldState(SCHOOL, slotOf(save.talksToday), collectedHidden());
     const npcVrms: Record<string, VRM | null> = {};
     for (const id of DEFAULT_PARTY) npcVrms[id] = vrmOf(id);
-    const view = new FieldView(state, { playerLook: CHARACTERS.akari.look, vrm: vrmOf('akari'), day: true, npcVrms });
+    const view = new FieldView(state, { playerLook: CHARACTERS.akari.look, vrm: vrmOf('akari'), day: true, npcVrms, npcMark: (id) => questMark(save, id) });
     view.resize(window.innerWidth, window.innerHeight);
     const fh = new FieldHud({ onAttack: () => {}, onInteract: fieldInteract, onMenu: schoolMenu, onLens: toggleLens }, { school: true, menuLabel: '下校' });
     fieldRun = { state, view, fh, hackT: null, busy: false, talking: false, mapTick: 0, kind: 'school' };
@@ -488,9 +489,24 @@ export function start(): void {
     const r = fieldRun;
     if (!r || !def.lines?.length) return;
     r.talking = true;
-    const n = chatCount[def.id] ?? 0;
-    chatCount[def.id] = n + 1;
-    await showTalk(def.lines[n % def.lines.length], null);
+    // 頼みごとがあれば、そちらを先に
+    const q = questOf(save, def.id);
+    const qs = q ? questState(save, q) : 'done';
+    if (q && qs === 'none') {
+      await showTalk(q.ask.flat(), `頼みごと「<b>${q.title}</b>」を受けた<br>${q.desc}`);
+      acceptQuest(save, q);
+      persist();
+    } else if (q && qs === 'ready') {
+      const got = completeQuest(save, q)!;
+      persist();
+      const list = Object.entries(got).map(([k, n]) => `${ITEMS[k].name}×${n}`).join('・');
+      await showTalk(q.thanks, `頼みごと「<b>${q.title}</b>」を解決！<br>${list}`);
+    } else {
+      const n = chatCount[def.id] ?? 0;
+      chatCount[def.id] = n + 1;
+      const extra = q && qs === 'active' ? `頼みごと「${q.title}」：${q.desc}` : null;
+      await showTalk(def.lines[n % def.lines.length], extra);
+    }
     r.talking = false;
   }
 

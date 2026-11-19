@@ -4,6 +4,8 @@ import { ENEMIES } from '../data/enemies';
 import { notebookProgress } from '../progress/growth';
 import type { SaveData } from '../progress/save';
 import { esc } from './fmt';
+import { QUESTS } from '../data/quests';
+import { questProgress, questState } from '../progress/quests';
 
 // 怪盗手帳（図鑑）。出会った敵（倒した数・弱点・説得できるか）と、仲間にした協力者。
 // まだ出会っていないものは「？？？」。
@@ -30,11 +32,19 @@ export function openNotebook(save: SaveData, onClose: () => void): void {
         <div class="sub">${allyLine}</div></div>`;
     })
     .join('');
+  const quests = QUESTS.map((q) => {
+    const st = questState(save, q);
+    if (st === 'none') return '';
+    const p = questProgress(save, q);
+    const tag = st === 'done' ? '<span class="gain">解決</span>' : st === 'ready' ? '<span class="gain">報告できる！</span>' : `<span class="why">${p.now} / ${p.need}</span>`;
+    return `<div class="gear"><div class="gname">${esc(q.title)}　${tag}</div><div class="sub">${esc(q.desc)}</div></div>`;
+  }).join('');
   el.innerHTML = `
     <div class="row"><button class="btn" data-act="back">もどる</button>
       <div class="grow"><b>怪盗手帳</b>　<span class="muted">出会った敵と、仲間にした協力者の記録</span></div>
       <div class="power">${found} / ${total}</div></div>
-    <div class="pane"><div class="gearlist">${cards}</div></div>`;
+    <div class="pane"><div class="muted">頼みごと</div><div class="gearlist">${quests || '<div class="muted">まだない（学校の人に話しかけると、頼まれることがある）</div>'}</div>
+      <div class="muted">敵と協力者</div><div class="gearlist">${cards}</div></div>`;
   el.querySelector('[data-act="back"]')!.addEventListener('click', () => {
     el.remove();
     onClose();

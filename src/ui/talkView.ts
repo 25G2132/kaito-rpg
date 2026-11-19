@@ -57,7 +57,7 @@ export function showTalk(lines: string[], after: string | null): Promise<void> {
         return;
       }
       if (after) {
-        start('絆', after, '#ffd25a');
+        start(after.includes('頼みごと') ? '頼みごと' : '絆', after, '#ffd25a');
         after = null;
         return;
       }
