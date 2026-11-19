@@ -368,3 +368,90 @@
   border-color: rgba(255, 201, 61, 0.8);
   background: rgba(255, 201, 61, 0.08);
 }
+
+/* ---- 場面が変わるときのロード画面 ---- */
+.loading {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 24px;
+  background: radial-gradient(circle at 50% 40%, #2a2f55, #0b0d18 70%);
+  color: #eef0f8;
+  font-family: system-ui, -apple-system, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+  animation: ldin 0.25s ease-out;
+  transition: opacity 0.35s;
+}
+.loading.out {
+  opacity: 0;
+}
+.ld-place {
+  font-size: 30px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+.ld-sub {
+  font-size: 13px;
+  opacity: 0.8;
+}
+.ld-runner {
+  display: flex;
+  gap: 10px;
+  margin: 6px 0;
+}
+.ld-runner i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ffd25a;
+  animation: hop 0.6s ease-in-out infinite;
+}
+.ld-runner i:nth-child(2) {
+  animation-delay: 0.12s;
+  background: #ff6a3d;
+}
+.ld-runner i:nth-child(3) {
+  animation-delay: 0.24s;
+  background: #6ad8ff;
+}
+.ld-tip {
+  max-width: 560px;
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.07);
+}
+.ld-tip b {
+  color: #ffd25a;
+  margin-right: 8px;
+}
+.ld-bar {
+  width: min(320px, 70vw);
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  overflow: hidden;
+}
+.ld-bar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #ff6a3d, #ffd25a);
+  animation: ldbar 1.1s ease-out forwards;
+}
+@keyframes ldin {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes ldbar {
+  from { width: 0; }
+  to { width: 100%; }
+}
+@keyframes hop {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}

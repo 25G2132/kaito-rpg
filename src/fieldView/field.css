@@ -239,6 +239,7 @@
   color: #ffd25a;
 }
 .talk-next {
+  visibility: hidden;
   position: absolute;
   right: 14px;
   bottom: 6px;

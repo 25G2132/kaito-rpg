@@ -24,6 +24,7 @@ import { watchOrientation } from '../ui/orientation';
 import '../fieldView/field.css';
 import { MANSION, SCHOOL } from '../data/maps';
 import { showTalk } from '../ui/talkView';
+import { transition } from '../ui/loading';
 import { FieldState, type FieldEvent } from '../field/logic';
 import type { Vec2 } from '../field/types';
 import { FieldHud } from '../fieldView/fieldHud';
@@ -187,11 +188,12 @@ export function start(): void {
         showHub(note);
       }
       else if (t.dataset.act === 'grow') openGrowth();
-      else if (t.dataset.act === 'infiltrate') startInfiltration();
+      else if (t.dataset.act === 'infiltrate') void transition(MANSION.name, '夜の屋敷に忍び込む', startInfiltration);
       else if (t.dataset.act === 'sleep') {
         sleep(save);
         persist();
-        startSchool();
+        closeHub();
+        void transition('学校', `${save.day}日目の朝`, () => startSchool());
       }
       else if (t.dataset.act === 'vrm') picker.click();
       else if (t.dataset.act === 'reset') {
@@ -407,8 +409,10 @@ export function start(): void {
   function leaveSchool(): void {
     goNight(save);
     persist();
-    endInfiltration();
-    showHub(`${save.day}日目の夜。怪盗の時間だ`);
+    void transition('夜の街', `${save.day}日目の夜。怪盗の時間だ`, () => {
+      endInfiltration();
+      showHub(`${save.day}日目の夜。怪盗の時間だ`);
+    });
   }
 
   function schoolMenu(): void {
