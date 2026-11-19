@@ -39,6 +39,10 @@ export interface SaveData {
   nextGearId: number;
   wins: Record<string, number>;
   flags: Record<string, number>; // 進み具合のしるし（ボスの扉に着いた、など）
+  bonds: Record<string, number>; // 仲間と話した回数（絆）
+  day: number; // 何日目
+  phase: 'day' | 'night'; // 昼（学校）か夜（怪盗）
+  talksToday: number; // きょう話した回数
   losses: Record<string, number>;
 }
 
@@ -56,6 +60,10 @@ export function defaultSave(): SaveData {
     nextGearId: 1,
     wins: {},
     flags: {},
+    bonds: {},
+    day: 1,
+    phase: 'day',
+    talksToday: 0,
     losses: {},
   };
 }
@@ -97,6 +105,13 @@ export function validateSave(raw: unknown): SaveData | null {
   if (!isCountMap(raw.wins) || !isCountMap(raw.losses)) return null;
   if (raw.flags === undefined) raw.flags = {}; // しるしがなかったころの保存データ
   if (!isCountMap(raw.flags)) return null;
+  // 絆と日にちがなかったころの保存データは、1日目の夜として読む
+  if (raw.bonds === undefined) raw.bonds = {};
+  if (raw.day === undefined) raw.day = 1;
+  if (raw.phase === undefined) raw.phase = 'night';
+  if (raw.talksToday === undefined) raw.talksToday = 0;
+  if (!isCountMap(raw.bonds) || !isInt(raw.day, 1, 1e6) || !isInt(raw.talksToday, 0, 99)) return null;
+  if (raw.phase !== 'day' && raw.phase !== 'night') return null;
   const save = raw as unknown as SaveData;
   // 新しいキャラが足されたときは、その人だけ初期値で足す
   for (const id of DEFAULT_PARTY) save.chars[id] ??= { level: START_LEVEL, exp: 0, asc: 0, skill: 1, weapon: null };

@@ -176,4 +176,6 @@ export interface PartyMember {
   skillLevel?: number; // 技レベル（1から。1つ上がるごとに技の倍率 +10%）
   bonus?: Partial<Stats>;
   mods?: Mods;
+  /** 技に足す効果（絆で開く「技の新しい効果」など） */
+  extraEffects?: Partial<Record<'basic' | 'skill' | 'ult', Effect[]>>;
 }

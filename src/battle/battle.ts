@@ -131,6 +131,7 @@ export class Battle {
   activeId: string | null = null;
   turnCount = 0;
   private log: BattleEvent[] = [];
+  private extras = new Map<string, NonNullable<PartyMember['extraEffects']>>();
 
   constructor(data: GameData, opts: BattleOptions) {
     this.data = data;
@@ -220,7 +221,12 @@ export class Battle {
   }
   skillsOf(u: Unit): { basic: SkillDef; skill: SkillDef; ult: SkillDef } | undefined {
     const c = this.charDef(u);
-    return c ? { basic: c.basic, skill: c.skill, ult: c.ult } : undefined;
+    if (!c) return undefined;
+    const extra = this.extras.get(u.uid);
+    if (!extra) return { basic: c.basic, skill: c.skill, ult: c.ult };
+    // 足す効果があれば、技の写しに足して返す（元のデータは変えない）
+    const add = (s: SkillDef, k: 'basic' | 'skill' | 'ult') => (extra[k]?.length ? { ...s, effects: [...s.effects, ...extra[k]!] } : s);
+    return { basic: add(c.basic, 'basic'), skill: add(c.skill, 'skill'), ult: add(c.ult, 'ult') };
   }
 
   /** これから番が来る順（n人ぶん）。いま番の人がいれば先頭 */
@@ -339,6 +345,7 @@ export class Battle {
     const c = this.data.characters[m.id];
     if (!c) throw new Error(`キャラが見つからない: ${m.id}`);
     const stats = statsAtLevel(c.base, m.level, m.bonus);
+    if (m.extraEffects) this.extras.set(`p${slot}`, m.extraEffects);
     return {
       uid: `p${slot}`,
       side: 'ally',

@@ -9,6 +9,7 @@ import { CHARACTERS } from '../data/characters';
 import { SLOTS } from '../data/gear';
 import { BOOK_EXP } from '../data/items';
 import { WEAPONS } from '../data/weapons';
+import { BONDS, BOND_MAX, BOND_NEED, bondLevel, type BondReward } from '../data/bonds';
 import { equipGear, equippedGear, enhanceGear, gearScore, makeGear, maxGearLevel, rollRarity, sumGear } from './gear';
 import type { GearPiece, SaveData } from './save';
 
@@ -138,6 +139,7 @@ export function memberFor(save: SaveData, charId: string): PartyMember {
   const bonus: Partial<Stats> = {};
   const add = (k: keyof Stats, v: number) => (bonus[k] = (bonus[k] ?? 0) + v);
   let mods: Mods = {};
+  const extraEffects: NonNullable<PartyMember['extraEffects']> = {};
   const w = c.weapon ? WEAPONS[c.weapon] : undefined;
   if (w) {
     for (const [k, v] of Object.entries(w.stats)) add(k as keyof Stats, v as number);
@@ -150,7 +152,18 @@ export function memberFor(save: SaveData, charId: string): PartyMember {
   add('spd', g.spd ?? 0);
   add('critRate', g.critRate ?? 0);
   add('critDmg', g.critDmg ?? 0);
-  return { id: charId, level: c.level, skillLevel: c.skill, bonus, mods };
+  // 絆で開いたもの
+  for (const r of bondRewards(save, charId)) {
+    if (r.statPct?.atk) add('atk', Math.round(base.atk * r.statPct.atk));
+    if (r.statPct?.hp) add('hp', Math.round(base.hp * r.statPct.hp));
+    if (r.statPct?.def) add('def', Math.round(base.def * r.statPct.def));
+    for (const [k, v] of Object.entries(r.mods ?? {})) mods[k as keyof Mods] = (mods[k as keyof Mods] ?? 0) + (v as number);
+    for (const [k, effs] of Object.entries(r.extraEffects ?? {})) {
+      const key = k as keyof typeof extraEffects;
+      extraEffects[key] = [...(extraEffects[key] ?? []), ...(effs ?? [])];
+    }
+  }
+  return { id: charId, level: c.level, skillLevel: c.skill, bonus, mods, extraEffects };
 }
 
 export function partyFor(save: SaveData): PartyMember[] {
@@ -176,6 +189,61 @@ export function powerOf(save: SaveData, charId: string): number {
 
 export function partyPower(save: SaveData): number {
   return save.party.reduce((sum, id) => sum + powerOf(save, id), 0);
+}
+
+// ---------- 絆と、昼と夜 ----------
+
+export const TALKS_PER_DAY = 3;
+
+export function bondOf(save: SaveData, charId: string): number {
+  return bondLevel(save.bonds[charId] ?? 0);
+}
+
+/** いまの絆で開いているもの */
+export function bondRewards(save: SaveData, charId: string): BondReward[] {
+  const def = BONDS[charId];
+  if (!def) return [];
+  const lv = bondOf(save, charId);
+  return def.rewards.filter((r) => r.level <= lv);
+}
+
+/** 次の絆のレベルまで、あと何回話すか（最大なら 0） */
+export function talksToNext(save: SaveData, charId: string): number {
+  const lv = bondOf(save, charId);
+  if (lv >= BOND_MAX) return 0;
+  return BOND_NEED[lv + 1] - (save.bonds[charId] ?? 0);
+}
+
+export type TalkResult =
+  | { ok: true; lines: string[]; levelUp?: BondReward; level: number }
+  | { ok: false; reason: string };
+
+/** 昼に仲間と話す（1日3回まで）。絆が上がったら、開いたものを返す */
+export function talk(save: SaveData, charId: string): TalkResult {
+  const def = BONDS[charId];
+  if (!def) return { ok: false, reason: '話せない' };
+  if (save.phase !== 'day') return { ok: false, reason: '夜は学校にいない' };
+  if (save.talksToday >= TALKS_PER_DAY) return { ok: false, reason: 'きょうはもう帰る時間' };
+  const n = save.bonds[charId] ?? 0;
+  const before = bondLevel(n);
+  save.bonds[charId] = n + 1;
+  save.talksToday++;
+  const after = bondLevel(n + 1);
+  const lines = def.talks[Math.min(n, def.talks.length - 1)];
+  const levelUp = after > before ? def.rewards.find((r) => r.level === after) : undefined;
+  return { ok: true, lines, levelUp, level: after };
+}
+
+/** 夜になる（学校から帰る） */
+export function goNight(save: SaveData): void {
+  save.phase = 'night';
+}
+
+/** 寝る：次の日の昼になる */
+export function sleep(save: SaveData): void {
+  save.day++;
+  save.phase = 'day';
+  save.talksToday = 0;
 }
 
 // ---------- ごほうび ----------
