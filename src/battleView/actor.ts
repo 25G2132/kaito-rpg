@@ -26,8 +26,12 @@ export class ActorView {
   flash = 0; // 当たったときに白く光る
   down = 0; // 倒れる（0〜1）
   highlight = 0; // 番が来ている
-  walk = 0; // 歩く速さ（0〜1。歩く場所で使う）
-  private walkPhase = 0;
+  /** 実際に動いた速さ（m/秒）。立ち位置の動きから測る。歩き・走りの動きはこれで決める */
+  speed = 0;
+  private gaitPhase = 0;
+  private lastX = NaN;
+  private lastZ = NaN;
+  private limbs?: Limbs;
 
   constructor(look: LookDef, facing: 1 | -1) {
     this.facing = facing;
@@ -35,6 +39,7 @@ export class ActorView {
     const built = buildShape(look, facing);
     this.placeholder = built.group;
     this.mats = built.mats;
+    this.limbs = built.limbs;
     this.height = built.height * s;
     this.floating = look.shape === 'drone';
     this.placeholder.scale.setScalar(s);
@@ -70,14 +75,13 @@ export class ActorView {
 
   update(t: number, dt: number): void {
     const tt = t + this.phase;
-    this.walkPhase += dt * (5 + 5 * this.walk) * (this.walk > 0.02 ? 1 : 0);
-    const step = this.walk > 0.02 ? Math.abs(Math.sin(this.walkPhase)) * 0.07 * this.walk : 0;
-    const bob = (this.floating ? Math.sin(tt * 2.2) * 0.1 + 0.15 : 0) + step;
+    const g = this.gait(dt);
+    const bob = this.floating ? Math.sin(tt * 2.2) * 0.1 + 0.15 : g.bob;
     const shakeX = this.shake > 0 ? Math.sin(tt * 90) * 0.08 * this.shake : 0;
     this.body.position.set(this.offset.x + shakeX, this.offset.y + bob, this.offset.z);
     // 倒れる：味方は後ろに倒れる、敵は沈んで小さくなる
     const fall = this.down;
-    this.body.rotation.z = -this.lean * this.facing + fall * 1.35 * this.facing * (this.vrm || this.facing > 0 ? 1 : 0);
+    this.body.rotation.z = -(this.lean + g.lean) * this.facing + fall * 1.35 * this.facing * (this.vrm || this.facing > 0 ? 1 : 0);
     if (this.facing < 0 && !this.vrm) {
       this.body.scale.setScalar(Math.max(0.01, 1 - fall));
       this.body.position.y -= fall * 0.6;
@@ -86,12 +90,50 @@ export class ActorView {
       m.emissiveIntensity = this.flash * 1.2 + this.highlight * 0.06;
     }
     if (this.vrm) {
-      poseVrm(this.vrm, tt, this.armRaise, this.ultPose, this.walk, this.walkPhase);
+      poseVrm(this.vrm, tt, this.armRaise, this.ultPose, g);
       this.vrm.update(dt);
     } else if (!this.floating) {
       // 仮の形の呼吸
-      this.placeholder.scale.y = (this.placeholder.scale.x) * (1 + Math.sin(tt * 2.2) * 0.012);
+      this.placeholder.scale.y = this.placeholder.scale.x * (1 + Math.sin(tt * 2.2) * 0.012 * (1 - g.amp));
+      if (this.limbs) {
+        const f = this.facing;
+        const [ll, lr] = this.limbs.legs;
+        const [al, ar] = this.limbs.arms;
+        ll.rotation.z = g.swing * f;
+        lr.rotation.z = -g.swing * f;
+        const armSw = g.swing * (0.6 + 0.2 * g.run);
+        const guard = 0.25 * g.run * g.amp; // 走るときは腕を少し前に出してかまえる
+        al.rotation.z = (-armSw + guard) * f;
+        ar.rotation.z = (armSw + guard) * f;
+      }
     }
+  }
+
+  /** 立ち位置の動きから、足の運び（歩き〜走り）を決める。動いた距離で足を進めるので、すべって見えない */
+  private gait(dt: number): Gait {
+    const x = this.root.position.x;
+    const z = this.root.position.z;
+    let d = 0;
+    if (!Number.isNaN(this.lastX)) d = Math.hypot(x - this.lastX, z - this.lastZ);
+    this.lastX = x;
+    this.lastZ = z;
+    if (d > 1.5) d = 0; // 瞬間移動（場面の切りかえ）は歩きにしない
+    if (dt > 0) this.speed += (d / dt - this.speed) * Math.min(1, dt * 10);
+    const amp = Math.min(1, this.speed / 2);
+    const run = Math.min(1, Math.max(0, (this.speed - 3.4) / 1.8));
+    const stepLen = 0.9 + 0.6 * run; // 1歩で進む長さ
+    this.gaitPhase = (this.gaitPhase + (d / stepLen) * Math.PI) % (Math.PI * 2);
+    const p = this.gaitPhase;
+    const walkBob = (0.5 + 0.5 * Math.cos(2 * p)) * 0.035;
+    const runBob = Math.abs(Math.sin(p)) * 0.09;
+    return {
+      amp,
+      run,
+      phase: p,
+      swing: Math.sin(p) * (0.5 + 0.3 * run) * amp,
+      bob: (walkBob + (runBob - walkBob) * run) * amp,
+      lean: (0.05 + 0.15 * run) * amp,
+    };
   }
 
   /** 頭の上（名前やHPを出す位置）*/
@@ -103,7 +145,23 @@ export class ActorView {
   }
 }
 
-function poseVrm(vrm: VRM, t: number, arm: number, ult: number, walk = 0, wp = 0): void {
+interface Gait {
+  amp: number; // 0＝止まっている 〜 1＝歩いている
+  run: number; // 0＝歩き 〜 1＝走り
+  phase: number;
+  swing: number; // 足の振り（ラジアン）
+  bob: number; // 体の上下
+  lean: number; // 前に傾く
+}
+
+interface Limbs {
+  legs: [THREE.Group, THREE.Group];
+  arms: [THREE.Group, THREE.Group];
+}
+
+function poseVrm(vrm: VRM, t: number, arm: number, ult: number, g: Gait): void {
+  const walk = g.amp;
+  const wp = g.phase;
   const h = vrm.humanoid;
   const breath = Math.sin(t * 2.2);
   const lerp = (a: number, b: number, p: number) => a + (b - a) * p;
@@ -117,14 +175,17 @@ function poseVrm(vrm: VRM, t: number, arm: number, ult: number, walk = 0, wp = 0
   h.getNormalizedBoneNode('leftLowerArm')?.rotation.set(0, -0.3, 0);
   h.getNormalizedBoneNode('rightLowerArm')?.rotation.set(0, lerp(0.3, 0, arm), 0);
   // 歩く：足を前後に振り、腕を逆に振る
-  const sw = Math.sin(wp) * 0.7 * walk;
+  const sw = g.swing;
+  const knee = (0.7 + 0.7 * g.run) * walk;
   h.getNormalizedBoneNode('leftUpperLeg')?.rotation.set(sw, 0, 0);
   h.getNormalizedBoneNode('rightUpperLeg')?.rotation.set(-sw, 0, 0);
-  h.getNormalizedBoneNode('leftLowerLeg')?.rotation.set(-Math.max(0, -Math.sin(wp)) * 0.9 * walk, 0, 0);
-  h.getNormalizedBoneNode('rightLowerLeg')?.rotation.set(-Math.max(0, Math.sin(wp)) * 0.9 * walk, 0, 0);
+  h.getNormalizedBoneNode('leftLowerLeg')?.rotation.set(-Math.max(0, -Math.sin(wp)) * knee - 0.15 * g.run * walk, 0, 0);
+  h.getNormalizedBoneNode('rightLowerLeg')?.rotation.set(-Math.max(0, Math.sin(wp)) * knee - 0.15 * g.run * walk, 0, 0);
   if (walk > 0.02 && arm < 0.01 && ult < 0.01) {
-    h.getNormalizedBoneNode('leftUpperArm')?.rotation.set(-sw * 0.8, 0, leftDown);
-    h.getNormalizedBoneNode('rightUpperArm')?.rotation.set(sw * 0.8, 0, rightDown);
+    const as = sw * (0.6 + 0.2 * g.run);
+    const tuck = 0.25 * g.run * walk; // 走るときは腕を体に寄せる
+    h.getNormalizedBoneNode('leftUpperArm')?.rotation.set(-as, 0, leftDown + tuck);
+    h.getNormalizedBoneNode('rightUpperArm')?.rotation.set(as, 0, rightDown - tuck);
   }
 }
 
@@ -134,7 +195,7 @@ function mat(color: THREE.ColorRepresentation, opts: Partial<THREE.MeshStandardM
   return new THREE.MeshStandardMaterial({ color, roughness: 0.55, emissive: 0xffffff, emissiveIntensity: 0, ...opts });
 }
 
-function buildShape(look: LookDef, facing: 1 | -1): { group: THREE.Group; mats: THREE.MeshStandardMaterial[]; height: number } {
+function buildShape(look: LookDef, facing: 1 | -1): { group: THREE.Group; mats: THREE.MeshStandardMaterial[]; height: number; limbs?: Limbs } {
   const g = new THREE.Group();
   const mats: THREE.MeshStandardMaterial[] = [];
   const add = (geo: THREE.BufferGeometry, m: THREE.MeshStandardMaterial, x: number, y: number, z = 0) => {
@@ -145,6 +206,17 @@ function buildShape(look: LookDef, facing: 1 | -1): { group: THREE.Group; mats: 
     return mesh;
   };
   const f = facing; // 前（顔）の向き
+  /** 付け根（肩・腰）でふれる手足。長さ len、太さ r */
+  const limb = (m: THREE.MeshStandardMaterial, y: number, z: number, r: number, len: number) => {
+    const pivot = new THREE.Group();
+    pivot.position.set(0, y, z);
+    const mesh = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 4, 10), m);
+    mesh.position.y = -(len / 2 + r) + r * 0.6;
+    pivot.add(mesh);
+    g.add(pivot);
+    if (!mats.includes(m)) mats.push(m);
+    return pivot;
+  };
   const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff3355 });
   const eye = (x: number, y: number, r = 0.08) => {
     const m = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 8), eyeMat);
@@ -157,8 +229,13 @@ function buildShape(look: LookDef, facing: 1 | -1): { group: THREE.Group; mats: 
       const cloth = mat(look.color, { roughness: 0.45 });
       const skin = mat('#f1d3c0');
       const hair = mat(new THREE.Color(look.color).multiplyScalar(0.45));
-      add(new THREE.CapsuleGeometry(0.24, 0.62, 6, 16), cloth, 0, 0.62);
+      const pants = mat(new THREE.Color(look.color).multiplyScalar(0.4), { roughness: 0.6 });
+      add(new THREE.CapsuleGeometry(0.22, 0.36, 6, 16), cloth, 0, 0.84);
       add(new THREE.SphereGeometry(0.2, 20, 14), skin, 0, 1.3);
+      const limbs: Limbs = {
+        legs: [limb(pants, 0.52, 0.11, 0.085, 0.34), limb(pants, 0.52, -0.11, 0.085, 0.34)],
+        arms: [limb(cloth, 1.1, 0.29, 0.065, 0.3), limb(cloth, 1.1, -0.29, 0.065, 0.3)],
+      };
       const cap = add(new THREE.SphereGeometry(0.215, 20, 14, 0, Math.PI * 2, 0, Math.PI / 2), hair, -0.03 * f, 1.33);
       cap.rotation.z = 0.25 * f;
       // 顔の向きが分かる目印（マスク）
@@ -172,7 +249,7 @@ function buildShape(look: LookDef, facing: 1 | -1): { group: THREE.Group; mats: 
       ring.rotation.x = -Math.PI / 2;
       ring.position.y = 0.02;
       g.add(ring);
-      return { group: g, mats, height: 1.55 };
+      return { group: g, mats, height: 1.55, limbs };
     }
     case 'drone': {
       const shell = mat(look.color, { metalness: 0.6, roughness: 0.35 });
@@ -193,10 +270,15 @@ function buildShape(look: LookDef, facing: 1 | -1): { group: THREE.Group; mats: 
     }
     case 'guard': {
       const suit = mat(look.color);
-      add(new THREE.CapsuleGeometry(0.27, 0.75, 6, 16), suit, 0, 0.7);
+      const dark = mat(new THREE.Color(look.color).multiplyScalar(0.5));
+      add(new THREE.CapsuleGeometry(0.25, 0.42, 6, 16), suit, 0, 0.98);
       add(new THREE.SphereGeometry(0.2, 18, 12), mat('#d9b9a2'), 0, 1.45);
       add(new THREE.BoxGeometry(0.06, 0.07, 0.32), mat('#0d0e12'), 0.17 * f, 1.47);
-      return { group: g, mats, height: 1.7 };
+      const limbs: Limbs = {
+        legs: [limb(dark, 0.58, 0.13, 0.1, 0.36), limb(dark, 0.58, -0.13, 0.1, 0.36)],
+        arms: [limb(suit, 1.28, 0.33, 0.075, 0.36), limb(suit, 1.28, -0.33, 0.075, 0.36)],
+      };
+      return { group: g, mats, height: 1.7, limbs };
     }
     case 'boss': {
       const armor = mat(look.color, { metalness: 0.5, roughness: 0.4 });

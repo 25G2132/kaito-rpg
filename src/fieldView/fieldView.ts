@@ -247,13 +247,12 @@ export class FieldView {
   }
 
   /** 毎コマ：状態を見た目に写す */
-  update(dt: number, moving: number, hidden: boolean): void {
+  update(dt: number, _moving: number, hidden: boolean): void { // 歩きの動きは、実際に動いた距離から決める（ActorView.gait）
     this.time += dt;
     const st = this.state;
     const [px, pz] = st.pos;
     this.player.root.position.set(px, 0, pz);
-    this.player.root.rotation.y = -st.dir;
-    this.player.walk += (moving - this.player.walk) * Math.min(1, dt * 10);
+    turnToward(this.player.root, -st.dir, dt, 14);
     // 影の中では、足もとの輪が紫に光り、仮の形は半分すける（隠れている合図）
     this.ring.position.set(px, 0.05, pz);
     (this.ring.material as THREE.MeshBasicMaterial).color.setHex(hidden ? 0xa070ff : 0xffffff);
@@ -285,9 +284,7 @@ export class FieldView {
       const dx = px - s.pos[0];
       const dz = pz - s.pos[1];
       const near = Math.hypot(dx, dz) < 3;
-      n.actor.root.rotation.y = -(near ? Math.atan2(dz, dx) : s.dir);
-      const walking = !near && !!s.def.at[st.slot]?.route;
-      n.actor.walk += ((walking ? 0.5 : 0) - n.actor.walk) * Math.min(1, dt * 8);
+      turnToward(n.actor.root, -(near ? Math.atan2(dz, dx) : s.dir), dt, 8);
       n.actor.update(this.time, dt);
     }
     for (const p of st.patrols) {
@@ -297,8 +294,7 @@ export class FieldView {
       v.cone.visible = vis;
       if (!vis) continue;
       v.actor.root.position.set(p.pos[0], 0, p.pos[1]);
-      v.actor.root.rotation.y = -p.dir;
-      v.actor.walk = p.alerted ? 1 : 0.5;
+      turnToward(v.actor.root, -p.dir, dt, 10);
       v.actor.update(this.time, dt);
       v.cone.position.set(p.pos[0], 0.03, p.pos[1]);
       v.cone.rotation.y = -p.dir;
@@ -486,4 +482,11 @@ function buildProp(p: PropDef): THREE.Object3D {
   // 表の向き（+z 向きで作っているので回す）
   g.rotation.y = Math.PI / 2 - (p.dir ?? Math.PI / 2);
   return g;
+}
+
+/** 向きをなめらかに変える（いちばん近い回り方で） */
+function turnToward(o: THREE.Object3D, target: number, dt: number, rate: number): void {
+  let d = target - o.rotation.y;
+  d = Math.atan2(Math.sin(d), Math.cos(d));
+  o.rotation.y += d * Math.min(1, dt * rate);
 }
