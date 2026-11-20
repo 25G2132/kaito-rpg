@@ -6,4 +6,4 @@
 
 | ファイル | 何の絵 | 作ったAI | 作った日 | 見本 | メモ |
 |---|---|---|---|---|---|
-| public/art/gacha/tsubaki.webp | ツバキ（★5）がガチャで当たったときの絵 | Google Gemini の画像（Nano Banana） | 2026-11-20 | 同じ会話で Gemini が文から描いた設定画 | 1024×572 を 1280×720 にそろえた。目に見えない透かし（SynthID）入り。指示文は docs/image-ai-trial.md |
+| public/art/gacha/tsubaki.webp | ツバキ（★5）がガチャで当たったときの絵 | Google Gemini の画像（Nano Banana） | 2026-11-20 | 同じ会話で Gemini が文から描いた設定画 | 2回目（キャラを大きく）。1024×572 を 1280×720 にそろえた。目に見えない透かし（SynthID）入り。指示文は docs/image-ai-trial.md |

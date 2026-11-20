@@ -113,6 +113,22 @@ character on right side, dark empty space bottom left
 - 次は：NovelAI は横長＋設定画を Character Reference に入れてもう一度。Gemini は「人物を右に、左下は暗い空だけ」と言い直す。
 - 文の直し：NovelAI は `black shadows spreading like wings` をやめて `black smoke, shadow tendrils` にし、`looking at viewer, visible eyes` を足す。
 
+## 3.6 いま使っている指示文（Gemini、キャラを大きく）
+
+ユーザーの希望「キャラがメインで目立つように」で描き直した。同じ会話で設定画を作ってから送る。★5 の1枚絵は、この形を見本にする。
+
+```
+Redraw it again so that Tsubaki is clearly the main subject and stands out. Keep her face, hairstyle, hair colors,
+violet eyes, camellia ornament, outfit and glowing katana exactly the same as the design sheet. Landscape 16:9.
+Close-up, cowboy shot (from mid-thigh up): she fills about 80% of the frame height, placed center-right, facing the viewer
+with a confident, cool look, eyes clearly visible, holding the glowing katana diagonally across the frame.
+Strong moonlight rim light on her hair and coat edges so she pops out from the background; background is a blurred night sky
+with a big full moon behind her head and soft bokeh, low detail. Black smoke and shadow tendrils curl around her
+(not feathers, not wings). Keep the lower-left corner darker and simple (space for name text), but do not make her small.
+Purple and deep blue palette with red accents from the camellia and a few petals. High-quality anime gacha splash art.
+No text, no logo, no watermark.
+```
+
 ## 4. ゲームに入れるときの決まり（Claude がする）
 
 - 置き場所：`public/art/gacha/<キャラのid>.webp`（ツバキなら `tsubaki.webp`）。
