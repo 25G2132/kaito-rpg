@@ -95,6 +95,21 @@ export class FieldHud {
     window.addEventListener('keyup', this.onKeyUp);
   }
 
+  private rects: DOMRect[] = [];
+  private rectsAt = -1e9;
+  /** 画面の上のほうに重なる表示の場所（0.5秒ごとに測り直す） */
+  blockers(): DOMRect[] {
+    const now = performance.now();
+    if (now - this.rectsAt > 500) {
+      this.rectsAt = now;
+      this.rects = [this.area, this.status, this.mini, this.root.querySelector<HTMLElement>('.fmenu')]
+        .filter((e): e is HTMLElement => !!e)
+        .map((e) => e.getBoundingClientRect())
+        .filter((r) => r.width > 0 && r.height > 0);
+    }
+    return this.rects;
+  }
+
   destroy(): void {
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);

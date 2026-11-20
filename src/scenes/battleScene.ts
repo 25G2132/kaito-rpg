@@ -747,6 +747,7 @@ export function start(): void {
     }
     const hidden = r.state.inShadow();
     const speed = Math.min(1, Math.hypot(move[0], move[1]));
+    r.view.avoid = r.fh.blockers();
     r.view.update(real, speed * (r.fh.running() ? 1 : 0.6), hidden);
     r.fh.setArea(r.state.areaName());
     r.fh.setHidden(hidden);

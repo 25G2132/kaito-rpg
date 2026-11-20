@@ -45,7 +45,10 @@ export class FieldView {
   private ring: THREE.Mesh;
   private lastHidden = false;
   private walls: { mesh: THREE.Mesh; rect: Rect }[] = [];
-  private npcs: { def: NpcDef; actor: ActorView; marks: Record<'!' | '?', THREE.Sprite> }[] = [];
+  private npcs: { def: NpcDef; actor: ActorView; label: THREE.Sprite; marks: Record<'!' | '?', THREE.Sprite> }[] = [];
+  /** 画面の上に重なる表示（左上の場所名など）。名札がこの下にもぐるときは薄くする */
+  avoid: DOMRect[] = [];
+  private tmpV = new THREE.Vector3();
   private npcMark?: (id: string) => '!' | '?' | null;
 
   constructor(
@@ -199,7 +202,7 @@ export class FieldView {
       };
       const marks = { '!': mk('！', '#ffb020'), '?': mk('？', '#30c070') };
       s.add(actor.root);
-      this.npcs.push({ def: n, actor, marks });
+      this.npcs.push({ def: n, actor, label, marks });
     }
 
     // 見回り
@@ -224,6 +227,17 @@ export class FieldView {
     this.ring.rotation.x = -Math.PI / 2;
     s.add(this.ring);
     this.yaw = state.dir + Math.PI; // 後ろから見る
+  }
+
+  /** その場所が画面で、上に重なる表示の下にあるか */
+  private underHud(x: number, y: number, z: number): boolean {
+    if (!this.avoid.length) return false;
+    const p = this.tmpV.set(x, y, z).project(this.camera);
+    if (p.z > 1) return false;
+    const sx = ((p.x + 1) / 2) * window.innerWidth;
+    const sy = ((1 - p.y) / 2) * window.innerHeight;
+    const pad = 36;
+    return this.avoid.some((r) => sx > r.left - pad && sx < r.right + pad && sy > r.top - pad && sy < r.bottom + pad);
   }
 
   resize(w: number, h: number): void {
@@ -266,6 +280,8 @@ export class FieldView {
       n.marks['!'].visible = mark === '!';
       n.marks['?'].visible = mark === '?';
       if (mark) n.marks[mark].position.y = n.actor.height + 1.1 + Math.sin(this.time * 4) * 0.08;
+      const under = this.underHud(s.pos[0], n.actor.height + 0.8, s.pos[1]);
+      for (const sp of [n.label, n.marks['!'], n.marks['?']]) sp.material.opacity += ((under ? 0.12 : 1) - sp.material.opacity) * Math.min(1, dt * 10);
       const dx = px - s.pos[0];
       const dz = pz - s.pos[1];
       const near = Math.hypot(dx, dz) < 3;
