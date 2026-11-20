@@ -608,6 +608,7 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: 50% 20%; /* 横に長い画面では上下が切れるので、顔のある上のほうを残す */
   animation: zoomin 1.2s ease-out;
 }
 .g5.has-img .g5art {
