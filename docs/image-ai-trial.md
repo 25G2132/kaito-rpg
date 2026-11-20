@@ -89,7 +89,7 @@ character design, clean lineart, cel shading
 text, logo, watermark, signature, extra fingers, bad hands, multiple girls
 ```
 
-**ガチャで当たったときの1枚絵**（大きさは「横長」。設定画を Character Reference に入れる）
+**ガチャで当たったときの1枚絵**（大きさは **Landscape（1216×832）** に変える。最初は縦長 832×1216 になっているので注意。設定画を Character Reference に入れる）
 ```
 1girl, solo, original, dynamic pose, leaping, drawing sword, glowing katana, pale blue light,
 long black hair, inner hair violet, low ponytail, red camellia hair ornament, violet eyes, serious,
@@ -98,6 +98,13 @@ night, rooftop, western mansion, huge full moon, moonlight, rim lighting, black 
 camellia petals, wind, purple and dark blue theme, from side, cinematic, key visual,
 character on right side, dark empty space bottom left
 ```
+
+## 3.5 1回目をためした結果（2026-11-20）
+
+- **Gemini**：設定画と1枚絵で顔・髪・服がよくそろった。横長（1024×572）で出る。ただ、人物がまん中で、左下に家が描かれて名前の余白はなかった。
+- **NovelAI**：設定画の絵はとてもきれい。1枚絵は縦長のまま出た（大きさの切りかえ忘れ）。「影が翼のように」を本物の黒い羽にし、目が髪の影でかくれた。
+- 次は：NovelAI は横長＋設定画を Character Reference に入れてもう一度。Gemini は「人物を右に、左下は暗い空だけ」と言い直す。
+- 文の直し：NovelAI は  をやめて  にし、 を足す。
 
 ## 4. ゲームに入れるときの決まり（Claude がする）
 
