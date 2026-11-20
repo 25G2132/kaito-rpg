@@ -36,6 +36,7 @@ export class FieldHud {
   private lensXY: [number, number] = [0, 0];
   private lensDragId: number | null = null;
   private lensLast: [number, number] = [0, 0];
+  private lensMoved = 0; // 開いてからレンズを動かした長さ
   private mini = document.createElement('canvas');
   private stickId: number | null = null;
   private stickOrigin: [number, number] = [0, 0];
@@ -215,10 +216,15 @@ export class FieldHud {
     if (this.status.textContent !== text) this.status.textContent = text;
   }
   private moveLens(dx: number, dy: number): void {
+    this.lensMoved += Math.hypot(dx, dy);
     const m = LENS_R * 0.6;
     this.lensXY = [Math.max(m, Math.min(window.innerWidth - m, this.lensXY[0] + dx)), Math.max(m, Math.min(window.innerHeight - m, this.lensXY[1] + dy))];
     this.lensEl.style.left = `${this.lensXY[0]}px`;
     this.lensEl.style.top = `${this.lensXY[1]}px`;
+  }
+  /** 開いたところから、レンズを少し動かしたか（動かすまでは探せない） */
+  lensSearching(): boolean {
+    return this.lensMoved >= LENS_R;
   }
   /** レンズの中心（画面の点） */
   lensPos(): [number, number] {
@@ -248,6 +254,7 @@ export class FieldHud {
       // 開いたときは画面のまんなか。スティックや見回しの指は放す
       this.lensXY = [window.innerWidth / 2, window.innerHeight * 0.45];
       this.moveLens(0, 0);
+      this.lensMoved = 0;
       this.stickId = null;
       this.stickVec = [0, 0];
       this.stickBase.classList.remove('on');

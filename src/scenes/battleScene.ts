@@ -754,6 +754,7 @@ export function start(): void {
       r.fh.lensStep(real);
       const [lx, ly] = r.fh.lensPos();
       lens = r.view.lensPick(lx, ly, LENS_R);
+      if (!r.fh.lensSearching()) lens = { id: null, near: lens.near }; // 開いたばかりは、動かしてから
     } else if (r.hackT === null) {
       const [sx, sy] = r.fh.stick();
       move = r.view.stickToWorld(sx, sy);
