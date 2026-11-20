@@ -116,6 +116,13 @@
   display: block;
   font-size: 15px;
 }
+.fbtn {
+  touch-action: none; /* 押した瞬間に反応させる（スクロールや拡大の待ちをなくす） */
+}
+.fbtn.pressed {
+  scale: 0.92; /* transform は位置合わせに使っているので別に書く */
+  filter: brightness(1.3);
+}
 .fbtn small {
   display: block;
   font-size: 9px;

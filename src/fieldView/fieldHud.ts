@@ -69,15 +69,15 @@ export class FieldHud {
     const atk = document.createElement('button');
     atk.className = 'fbtn fatk';
     atk.innerHTML = '<b>攻撃</b><small>先に叩くと有利</small>';
-    atk.addEventListener('click', () => h.onAttack());
+    press(atk, () => h.onAttack());
     this.interactBtn.className = 'fbtn fint';
-    this.interactBtn.addEventListener('click', () => h.onInteract());
+    press(this.interactBtn, () => h.onInteract());
     this.runBtn.className = 'fbtn frun';
     this.runBtn.textContent = '走る';
     this.lensBtn.className = 'fbtn flens';
     this.lensBtn.innerHTML = '<b>レンズ</b><small>解析</small>';
-    this.lensBtn.addEventListener('click', () => h.onLens());
-    this.runBtn.addEventListener('click', () => {
+    press(this.lensBtn, () => h.onLens());
+    press(this.runBtn, () => {
       this.run = !this.run;
       this.runBtn.classList.toggle('on', this.run);
     });
@@ -295,4 +295,22 @@ export class FieldHud {
     g.fill();
     g.restore();
   }
+}
+
+/**
+ * 指が触れた瞬間に押したことにする。
+ * スマホでは、ほかの指（動かすスティック）が画面に触れているあいだ click が起きないので、click では押せない。
+ */
+function press(el: HTMLButtonElement, fn: () => void): void {
+  el.addEventListener('pointerdown', (e) => {
+    if (el.disabled || e.button > 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    el.classList.add('pressed');
+    fn();
+  });
+  const up = () => el.classList.remove('pressed');
+  el.addEventListener('pointerup', up);
+  el.addEventListener('pointercancel', up);
+  el.addEventListener('pointerleave', up);
 }
