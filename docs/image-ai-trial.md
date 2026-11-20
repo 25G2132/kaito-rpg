@@ -1,5 +1,7 @@
 # 1枚絵のAIのためし方（NovelAI と Gemini）
 
+**→ 2026-11-20、Gemini に決めた。** ここから先の1枚絵は、Gemini の指示文で作る。
+
 2026-11-20。[image-ai-comparison.md](image-ai-comparison.md) のおすすめ2つを、同じ指示文でためして選ぶための手引き。
 絵を描かせる作業はユーザー。指示文と、できた絵をゲームに入れるのは Claude。
 
