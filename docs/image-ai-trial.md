@@ -104,7 +104,7 @@ character on right side, dark empty space bottom left
 - **Gemini**：設定画と1枚絵で顔・髪・服がよくそろった。横長（1024×572）で出る。ただ、人物がまん中で、左下に家が描かれて名前の余白はなかった。
 - **NovelAI**：設定画の絵はとてもきれい。1枚絵は縦長のまま出た（大きさの切りかえ忘れ）。「影が翼のように」を本物の黒い羽にし、目が髪の影でかくれた。
 - 次は：NovelAI は横長＋設定画を Character Reference に入れてもう一度。Gemini は「人物を右に、左下は暗い空だけ」と言い直す。
-- 文の直し：NovelAI は  をやめて  にし、 を足す。
+- 文の直し：NovelAI は `black shadows spreading like wings` をやめて `black smoke, shadow tendrils` にし、`looking at viewer, visible eyes` を足す。
 
 ## 4. ゲームに入れるときの決まり（Claude がする）
 
