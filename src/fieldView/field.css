@@ -273,11 +273,56 @@
   from { box-shadow: 0 0 0 rgba(94, 240, 255, 0); }
   to { box-shadow: 0 0 18px rgba(94, 240, 255, 0.95); }
 }
-.fhud.lens::before {
-  content: '';
+/* 解析レンズ：丸の外を暗くし、丸の中だけよく見える。重ね続けると、ふちの金色の輪がたまる */
+.flensview {
+  display: none;
   position: absolute;
-  inset: 0;
+  width: 128px;
+  height: 128px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 4px solid #5ef0ff;
+  box-shadow: 0 0 0 3000px rgba(4, 16, 34, 0.6), inset 0 0 calc(12px + var(--n, 0) * 40px) rgba(94, 240, 255, calc(0.15 + var(--n, 0) * 0.6));
   pointer-events: none;
-  background: radial-gradient(circle, transparent 35%, rgba(30, 200, 255, 0.28) 75%, rgba(10, 80, 120, 0.55));
-  box-shadow: inset 0 0 0 3px rgba(94, 240, 255, 0.5);
+}
+.fhud.lens .flensview {
+  display: block;
+}
+.flensview .gauge {
+  position: absolute;
+  inset: -12px;
+  border-radius: 50%;
+  background: conic-gradient(#ffd25a calc(var(--p, 0) * 360deg), transparent 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+}
+.flensview .cross {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  transform: translate(-50%, -50%);
+  border: 2px solid rgba(94, 240, 255, 0.8);
+  border-radius: 50%;
+}
+.flensview span {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 16px);
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 12px;
+  color: #bff6ff;
+  text-shadow: 0 1px 3px #000;
+}
+.flensview.near {
+  animation: lensnear 0.35s ease-in-out infinite alternate;
+}
+.flensview.hit {
+  border-color: #ffd25a;
+}
+@keyframes lensnear {
+  from { scale: 1; }
+  to { scale: 1.06; }
 }

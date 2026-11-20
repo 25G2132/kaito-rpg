@@ -5,7 +5,7 @@ import { randomTip } from '../data/tips';
 
 const MIN_MS = 1100;
 
-export async function transition(place: string, sub: string, build: () => void): Promise<void> {
+export async function transition(place: string, sub: string, build: () => void, minMs = MIN_MS): Promise<void> {
   const el = document.createElement('div');
   el.className = 'loading';
   el.innerHTML = `
@@ -19,7 +19,7 @@ export async function transition(place: string, sub: string, build: () => void):
   // 画面に出てから、裏で次の場面を作る
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   build();
-  const rest = MIN_MS - (performance.now() - t0);
+  const rest = minMs - (performance.now() - t0);
   if (rest > 0) await new Promise((r) => setTimeout(r, rest));
   el.classList.add('out');
   setTimeout(() => el.remove(), 350);

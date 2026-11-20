@@ -2,7 +2,7 @@
 // 歩く・壁にぶつかる・見回りとカメラが見る・影に隠れる・ハッキング・宝箱・戦いの始まり方。
 
 import type { Opening } from '../battle/battle';
-import type { CameraDef, ChestDef, HiddenDef, MapDef, NpcDef, PatrolDef, Rect, Slot, TerminalDef, Vec2 } from './types';
+import type { CameraDef, ChestDef, HiddenDef, LinkDef, MapDef, NpcDef, PatrolDef, Rect, Slot, TerminalDef, Vec2 } from './types';
 
 export const PLAYER_RADIUS = 0.35;
 export const WALK_SPEED = 3.0;
@@ -17,6 +17,8 @@ export const ATTACK_ANGLE = 1.2; // 攻撃が届く角度（片側、ラジア�
 export const INTERACT_RANGE = 1.6;
 export const HEAR_RANGE = 1.6;
 export const LENS_RANGE = 6; // 解析レンズで見える近さ
+export const LENS_TIME = 1.2; // レンズを重ね続けて、この秒数で見つかる
+export const LINK_RANGE = 0.8; // 出入り口にこれより近づくと、ほかの場所へ移る
 export const HINT_RANGE = 7; // これより近いと、レンズのボタンが知らせる // 影の中でも、これより近いと気づかれる（走っているとき）
 
 export const inRect = (p: Vec2, r: Rect) => p[0] >= r.x && p[0] <= r.x + r.w && p[1] >= r.z && p[1] <= r.z + r.d;
@@ -72,6 +74,7 @@ export function canSee(from: Vec2, dir: number, fov: number, range: number, targ
 }
 
 export type FieldEvent =
+  | { t: 'link'; link: LinkDef } // ほかの場所へ移る
   | { t: 'spotted'; by: string } // 見回りに見つかった
   | { t: 'alarm'; camera: string; alerted: string[] } // カメラに見つかった（近くの見回りが来る）
   | { t: 'lost'; by: string } // 見失った
@@ -118,6 +121,7 @@ export interface CameraState {
 export interface FieldInput {
   move: Vec2; // スティック（長さ 0〜1。x＝右、z＝前。カメラの向きで回したもの）
   run: boolean;
+  lens?: string | null; // レンズを重ねている隠し要素の id（画面で決める）
 }
 
 export type Interactable =
@@ -146,6 +150,8 @@ export class FieldState {
   /** 解析レンズ */
   lensOn = false;
   revealed = new Set<string>(); // レンズで見えた隠し要素
+  lensTarget: string | null = null; // いまレンズを重ねているもの
+  lensProgress = 0; // 重ね続けた秒数
   collected: Set<string>; // もう拾った・倒した隠し要素（保存から）
 
   constructor(map: MapDef, slot: Slot = 'morning', collected: Iterable<string> = []) {
@@ -211,7 +217,7 @@ export class FieldState {
     // 自分
     const len = Math.min(1, Math.hypot(input.move[0], input.move[1]));
     const running = input.run && len > 0.1;
-    if (len > 0.05) {
+    if (len > 0.05 && !this.lensOn) {
       const speed = (running ? RUN_SPEED : WALK_SPEED) * len;
       const nx = input.move[0] / Math.hypot(input.move[0], input.move[1]);
       const nz = input.move[1] / Math.hypot(input.move[0], input.move[1]);
@@ -233,15 +239,32 @@ export class FieldState {
         n.dir = Math.atan2(tz, tx);
       }
     }
-    // 解析レンズ：近くの隠し要素が見える
+    // 解析レンズ：レンズを隠し要素に重ね続けると見つかる（遠すぎるものは見えない）
     if (this.lensOn) {
-      for (const h of this.map.hidden ?? []) {
-        if (this.collected.has(h.id) || this.revealed.has(h.id)) continue;
-        if (dist(h.pos, this.pos) <= LENS_RANGE) {
-          this.revealed.add(h.id);
-          ev.push({ t: 'found', id: h.id, text: h.text });
-        }
+      const h = (this.map.hidden ?? []).find((x) => x.id === input.lens);
+      const ok = !!h && !this.collected.has(h.id) && !this.revealed.has(h.id) && dist(h.pos, this.pos) <= LENS_RANGE;
+      if (ok && this.lensTarget === h.id) this.lensProgress += dt;
+      else if (ok) {
+        this.lensTarget = h.id;
+        this.lensProgress = dt;
+      } else {
+        this.lensProgress = Math.max(0, this.lensProgress - dt * 2);
+        if (this.lensProgress === 0) this.lensTarget = null;
       }
+      if (h && ok && this.lensProgress >= LENS_TIME) {
+        this.revealed.add(h.id);
+        this.lensTarget = null;
+        this.lensProgress = 0;
+        ev.push({ t: 'found', id: h.id, text: h.text });
+      }
+    } else {
+      this.lensTarget = null;
+      this.lensProgress = 0;
+    }
+    // 出入り口に入ると、ほかの場所へ
+    if (!this.lensOn) {
+      const link = (this.map.links ?? []).find((k) => dist(k.pos, this.pos) <= LINK_RANGE);
+      if (link) ev.push({ t: 'link', link });
     }
     const hidden = this.inShadow();
     const blockers = this.solids();

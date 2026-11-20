@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { makeRng } from '../battle/rng';
 import { ITEMS } from '../data/items';
-import { TOWN } from '../data/maps';
+import { TOWN_ZONES } from '../data/maps';
 import { FISH_PER_DAY, FISH_TABLE, SHOPS } from '../data/shops';
 import { FieldState, inRect } from '../field/logic';
 import { sleep } from './growth';
@@ -37,11 +37,13 @@ describe('街', () => {
   it('データ：お店の品とつれる物の名前がそろい、人・つり場・隠し要素・出口に行ける', () => {
     for (const sh of Object.values(SHOPS)) for (const g of sh.goods) expect(ITEMS[g.item], sh.id).toBeTruthy();
     for (const f of FISH_TABLE) for (const k of Object.keys(f.items)) expect(ITEMS[k]).toBeTruthy();
-    const f = new FieldState(TOWN);
-    const solids = f.solids();
-    const pts = [TOWN.start, TOWN.exit!.pos, ...(TOWN.spots ?? []).map((x) => x.pos), ...(TOWN.hidden ?? []).map((h) => h.pos), ...f.npcs.map((n) => n.pos)];
-    for (const p of pts) expect(TOWN.walls.some((r) => inRect(p, r)), String(p)).toBe(false);
-    for (const n of TOWN.npcs ?? []) if (n.shop) expect(SHOPS[n.shop], n.id).toBeTruthy();
-    expect(solids.length).toBeGreaterThan(0);
+    for (const z of TOWN_ZONES) {
+      const f = new FieldState(z);
+      const pts = [z.start, ...(z.exit ? [z.exit.pos] : []), ...(z.spots ?? []).map((x) => x.pos), ...(z.hidden ?? []).map((h) => h.pos), ...f.npcs.map((n) => n.pos)];
+      for (const p of pts) expect(z.walls.some((r) => inRect(p, r)), `${z.id} ${p}`).toBe(false);
+      for (const n of z.npcs ?? []) if (n.shop) expect(SHOPS[n.shop], n.id).toBeTruthy();
+    }
+    expect(TOWN_ZONES.some((z) => z.spots?.some((s) => s.kind === 'fish'))).toBe(true);
+    expect(TOWN_ZONES.some((z) => z.exit)).toBe(true);
   });
 });

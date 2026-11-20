@@ -1,4 +1,4 @@
-import type { MapDef, WallDef } from '../field/types';
+import type { MapDef, NpcDef, NpcPlace, Slot, WallDef } from '../field/types';
 
 // 忍び込む建物。第1章は「黒金邸」（名前は仮）。
 // 庭 → 玄関ホール → 資料室 → 金庫室の前 → 番人（ボス）。
@@ -102,63 +102,138 @@ export const MANSION: MapDef & { boss: NonNullable<MapDef['boss']> } = {
   ],
 };
 
-// 昼の学校（拠点）。仲間や生徒に話しかける。廊下の西の端の昇降口から下校すると夜。
-// 屋上は「階段の先」として、廊下の東の北側に置く（1つの平面にまとめている）。
-//
-//   z=0 ┌────────┬───────────┬──────────┐
-//       │ 教室1-A │   中庭     │   屋上    │
-//  z=10 ├──  ────┴──   ──────┴───  ────┤
-//    昇降口           廊下                │
-//  z=14 ├──  ────┬──  ───┬────  ───────┤
-//       │ 図書室  │ 購買   │   体育館     │
-//  z=22 │        ├──────┘              │
-//  z=26 └────────┘                      │
-//  z=30                └──────────────┘
-//      x=0     x=14    x=24    x=30     x=44
+// ---------- 昼の学校と街：いくつかの「場所」に分け、階段や出入り口で行き来する ----------
+// 場所ごとに別の地図。出入り口（links）に歩いて入ると、短い切りかえ画面のあと、つながった場所に出る。
+
 const desk = (x: number, z: number) => wall(x, z, 1.1, 0.7, 'desk', 0.8);
 const S = Math.PI / 2; // 南（+z）を向く
+const N = -Math.PI / 2; // 北（-z）を向く
+const E = 0; // 東（+x）を向く
+const W = Math.PI; // 西（-x）を向く
+/** 四角い部屋の外の壁 */
+const box = (w: number, d: number): WallDef[] => [wall(-T, -T, w + 2 * T, T), wall(-T, 0, T, d), wall(w, 0, T, d), wall(-T, d, w + 2 * T, T)];
+const empty = { doors: [], shadows: [], terminals: [], cameras: [], patrols: [], chests: [] };
 
-export const SCHOOL: MapDef = {
-  id: 'school',
-  name: '学校',
+/** 時間ごとの居場所に「どの場所（地図）にいるか」をつけたもの */
+type ZonePlace = NpcPlace & { zone: string };
+type ZoneNpc = Omit<NpcDef, 'at'> & { at: Partial<Record<Slot, ZonePlace>> };
+/** その場所にいる時間だけを残した人の一覧 */
+const npcsIn = (list: ZoneNpc[], zone: string): NpcDef[] =>
+  list
+    .map((n) => {
+      const at: Partial<Record<Slot, NpcPlace>> = {};
+      for (const [slot, p] of Object.entries(n.at) as [Slot, ZonePlace][]) if (p.zone === zone) at[slot] = { pos: p.pos, dir: p.dir, route: p.route };
+      return { ...n, at };
+    })
+    .filter((n) => Object.keys(n.at).length > 0);
+
+// 学校の人。文は仮
+const SCHOOL_NPCS: ZoneNpc[] = [
+  // 仲間（話すと絆が上がる。時間ごとに居場所が変わる）
+  { id: 'shin', charId: 'shin', at: { morning: { zone: 'school_2f', pos: [2.6, 7.6], dir: E }, lunch: { zone: 'school_roof', pos: [10, 6], dir: N }, after: { zone: 'school_1f', pos: [9.2, 13], dir: N } } },
+  { id: 'yuki', charId: 'yuki', at: { morning: { zone: 'school_2f', pos: [9.5, 1.9], dir: S }, lunch: { zone: 'school_garden', pos: [12, 7.5], dir: N }, after: { zone: 'school_2f', pos: [6.5, 8.3], dir: N } } },
+  { id: 'hayate', charId: 'hayate', at: { morning: { zone: 'school_2f', pos: [18, 12], dir: E }, lunch: { zone: 'school_1f', pos: [17, 6], dir: S }, after: { zone: 'school_gym', pos: [10, 6], dir: E } } },
+  // 生徒と先生（話すとひとこと。話せる回数は減らない）
+  {
+    id: 'teacher',
+    name: '担任の先生',
+    look: { shape: 'hero', color: '#8a8fa8', scale: 1.08 },
+    at: {
+      morning: { zone: 'school_2f', pos: [6.5, 2.4], dir: S },
+      lunch: { zone: 'school_2f', pos: [4, 12], dir: E, route: [[4, 12], [20, 12]] },
+      after: { zone: 'school_1f', pos: [3.5, 14.5], dir: N },
+    },
+    lines: [
+      ['担任の先生', 'おはよう。今日も遅刻ギリギリだな。'],
+      ['担任の先生', '弱点をつくと守りが崩れる……って、なんの話だ？　ゲームか？'],
+      ['担任の先生', '最近、夜の街で怪盗のうわさがあるらしい。気をつけて帰れよ。'],
+    ],
+  },
+  {
+    id: 'librarian',
+    name: '図書委員',
+    look: { shape: 'hero', color: '#b48ad8', scale: 0.95 },
+    at: { morning: { zone: 'school_1f', pos: [11, 7], dir: W }, lunch: { zone: 'school_1f', pos: [11, 7], dir: W }, after: { zone: 'school_1f', pos: [11, 7], dir: W } },
+    lines: [
+      ['図書委員', '図書室ではお静かに。'],
+      ['図書委員', 'いちばん奥の棚に、だれも借りない本があるんです。……ふしぎですよね。'],
+    ],
+  },
+  {
+    id: 'shop',
+    name: '購買の店員さん',
+    look: { shape: 'hero', color: '#f0a050', scale: 1.05 },
+    at: { morning: { zone: 'school_1f', pos: [17, 9.75], dir: N }, lunch: { zone: 'school_1f', pos: [17, 9.75], dir: N } },
+    lines: [
+      ['購買の店員さん', 'いらっしゃい！　メロンパンは早い者勝ちだよ。'],
+      ['購買の店員さん', '黒金社長？　うちのパンを買い占めたことがあってねえ……。'],
+    ],
+  },
+  {
+    id: 'basket',
+    name: 'バスケ部の先輩',
+    look: { shape: 'hero', color: '#ff8a3d', scale: 1.12 },
+    at: {
+      lunch: { zone: 'school_gym', pos: [6, 8], dir: E },
+      after: { zone: 'school_gym', pos: [3, 3], dir: E, route: [[3, 3], [17, 3], [17, 12], [3, 12]] },
+    },
+    lines: [
+      ['バスケ部の先輩', 'お、アカリ！　入部の話、考えてくれた？'],
+      ['バスケ部の先輩', '体育館の裏、夜になると光ってるって知ってた？'],
+    ],
+  },
+  {
+    id: 'classmateA',
+    name: 'うわさ好きのクラスメイト',
+    look: { shape: 'hero', color: '#70c0a0' },
+    at: {
+      morning: { zone: 'school_2f', pos: [3.6, 4.6], dir: E },
+      lunch: { zone: 'school_garden', pos: [2, 5], dir: E, route: [[2, 5], [14, 5]] },
+      after: { zone: 'school_1f', pos: [26, 2], dir: W },
+    },
+    lines: [
+      ['クラスメイト', 'ねえ聞いた？　夜の学校の屋上で、だれかが空を見てるんだって。'],
+      ['クラスメイト', '怪盗のうわさ、また増えてるよ。黒金邸がねらわれたとか。'],
+    ],
+  },
+  {
+    id: 'classmateB',
+    name: 'のんびりしたクラスメイト',
+    look: { shape: 'hero', color: '#e080a0', scale: 0.97 },
+    at: { morning: { zone: 'school_2f', pos: [22, 12], dir: W }, lunch: { zone: 'school_roof', pos: [7, 7.5], dir: N } },
+    lines: [
+      ['クラスメイト', '屋上って、風が気持ちいいよね。'],
+      ['クラスメイト', 'シンくん、昼休みはいつも屋上でコーヒー飲んでるよ。'],
+    ],
+  },
+];
+
+// 2階：教室 1-A（はじめの場所）・教室 1-B・廊下。西の階段で1階、東の階段で屋上
+//
+//   z=0 ┌─────────┬─────────┐
+//       │ 教室1-A  │ 教室1-B  │
+//  z=10 ├──── ──┴── ──────┤
+//   階段↓        廊下        階段↑（屋上）
+//  z=14 └─────────────────┘
+//      x=0      x=14      x=26
+const SCHOOL_2F: MapDef = {
+  id: 'school_2f',
+  name: '2階',
   start: [11, 8.6],
-  startDir: -Math.PI / 2,
+  startDir: N,
   wallColor: '#efe6d4',
   areas: [
     { name: '教室 1-A', x: 0, z: 0, w: 14, d: 10, floor: '#c9a77a' },
-    { name: '中庭', x: 14, z: 0, w: 16, d: 10, floor: '#7cbf6e' },
-    { name: '屋上', x: 30, z: 0, w: 14, d: 10, floor: '#aab6c4' },
-    { name: '廊下', x: 0, z: 10, w: 44, d: 4, floor: '#ddd8cb' },
-    { name: '図書室', x: 0, z: 14, w: 14, d: 12, floor: '#9a7656' },
-    { name: '購買', x: 14, z: 14, w: 10, d: 8, floor: '#e7d0a2' },
-    { name: '体育館', x: 24, z: 14, w: 20, d: 16, floor: '#d9a865' },
+    { name: '教室 1-B', x: 14, z: 0, w: 12, d: 10, floor: '#c2a27a' },
+    { name: '2階の廊下', x: 0, z: 10, w: 26, d: 4, floor: '#ddd8cb' },
   ],
   walls: [
-    // 外の壁
-    wall(-T, -T, 44 + 2 * T, T),
-    wall(-T, 0, T, 26),
-    wall(44, 0, T, 30),
-    wall(-T, 26, 14.4 + T, T), // 図書室の南
-    wall(14, 22, 10.4, T), // 購買の南
-    wall(24, 30, 20.4, T), // 体育館の南
-    wall(14, 22, T, 4.4), // 図書室の東（南の部分）
-    // 北の列の間仕切り
+    ...box(26, 14),
     wall(14, 0, T, 10),
-    wall(30, 0, T, 10),
-    // 北の列と廊下の間（教室 10〜12、中庭 20〜23、屋上への階段 36〜38 が出入り口）
+    // 教室と廊下の間（1-A は 10〜12、1-B は 16〜18 が戸）
     wall(0, 10, 10, T),
-    wall(12, 10, 8, T),
-    wall(23, 10, 13, T),
-    wall(38, 10, 6, T),
-    // 廊下と南の列の間（図書室 5〜7、購買 17〜21、体育館 32〜35 が出入り口）
-    wall(0, 14 - T, 5, T),
-    wall(7, 14 - T, 10, T),
-    wall(21, 14 - T, 11, T),
-    wall(35, 14 - T, 9, T),
-    // 南の列の間仕切り
-    wall(14, 14, T, 8),
-    wall(24, 14, T, 16),
-    // 教室：机（3列×2行）と教卓
+    wall(12, 10, 4, T),
+    wall(18, 10, 8, T),
     desk(2, 3),
     desk(5, 3),
     desk(8, 3),
@@ -166,231 +241,259 @@ export const SCHOOL: MapDef = {
     desk(5, 5.5),
     desk(8, 5.5),
     wall(5.5, 0.9, 2, 0.8, 'desk', 1.0),
-    // 中庭：花だんとベンチ
-    wall(17, 2, 3, 1, 'hedge', 0.7),
-    wall(25, 2, 3, 1, 'hedge', 0.7),
-    wall(20.5, 6.5, 3, 0.6, 'desk', 0.5),
-    // 屋上：ベンチ
-    wall(33, 4, 3, 0.6, 'desk', 0.5),
-    // 廊下：ロッカー
-    wall(8, 13.1, 5, 0.5, 'locker', 1.8),
-    wall(25, 13.1, 6, 0.5, 'locker', 1.8),
-    // 図書室：本棚と読書机
-    wall(1, 16.5, 5, 0.7, 'shelf', 2.2),
-    wall(1, 19.5, 5, 0.7, 'shelf', 2.2),
-    wall(1, 22.5, 5, 0.7, 'shelf', 2.2),
-    wall(8.5, 20, 3.5, 1.6, 'desk', 0.8),
-    // 購買：カウンター
-    wall(15, 17.6, 8, 0.6, 'desk', 1.0),
-    // 体育館：舞台
-    wall(30, 28, 10, 2, 'desk', 0.9),
+    desk(17, 3),
+    desk(20, 3),
+    desk(23, 3),
+    desk(17, 5.5),
+    desk(20, 5.5),
+    desk(23, 5.5),
+    wall(4, 13.1, 4, 0.5, 'locker', 1.8),
   ],
-  doors: [],
-  shadows: [],
-  terminals: [],
-  cameras: [],
-  patrols: [],
-  chests: [],
+  ...empty,
   props: [
     { kind: 'board', x: 7, z: 0.05, w: 8, dir: S },
     { kind: 'clock', x: 12.5, z: 0.05, dir: S },
-    { kind: 'window', x: 0.05, z: 3, w: 2.2, dir: 0 },
-    { kind: 'window', x: 0.05, z: 6.5, w: 2.2, dir: 0 },
-    { kind: 'poster', x: 3, z: 10.45, dir: S, color: '#ff8fa3' },
-    { kind: 'poster', x: 15.5, z: 10.45, dir: S, color: '#7ab8ff' },
-    { kind: 'poster', x: 27, z: 10.45, dir: S, color: '#ffd25a' },
-    { kind: 'poster', x: 40, z: 10.45, dir: S, color: '#5ef0a0' },
-    { kind: 'plant', x: 13.2, z: 11 },
-    { kind: 'plant', x: 43.2, z: 13 },
-    { kind: 'plant', x: 29.2, z: 1 },
-    { kind: 'fence', x: 30.4, z: 0.2, w: 13.4, dir: S },
-    { kind: 'bread', x: 16, z: 17.5, w: 6 },
-    { kind: 'hoop', x: 24.8, z: 22 },
-    { kind: 'hoop', x: 43.2, z: 22 },
+    { kind: 'board', x: 20, z: 0.05, w: 7, dir: S },
+    { kind: 'window', x: 0.05, z: 3, w: 2.2, dir: E },
+    { kind: 'window', x: 0.05, z: 6.5, w: 2.2, dir: E },
+    { kind: 'window', x: 25.95, z: 4.5, w: 2.2, dir: W },
+    { kind: 'poster', x: 6, z: 10.45, dir: S, color: '#ff8fa3' },
+    { kind: 'poster', x: 21, z: 10.45, dir: S, color: '#7ab8ff' },
+    { kind: 'plant', x: 9.5, z: 13.4 },
   ],
-  npcs: [
-    // 仲間（話すと絆が上がる。時間ごとに居場所が変わる）
-    { id: 'shin', charId: 'shin', at: { morning: { pos: [2.6, 7.6], dir: 0 }, lunch: { pos: [40, 6], dir: -S }, after: { pos: [10.2, 23], dir: -S } } },
-    { id: 'yuki', charId: 'yuki', at: { morning: { pos: [9.5, 1.9], dir: S }, lunch: { pos: [22, 8], dir: -S }, after: { pos: [6.5, 8.3], dir: -S } } },
-    { id: 'hayate', charId: 'hayate', at: { morning: { pos: [18, 12], dir: 0 }, lunch: { pos: [18, 16], dir: S }, after: { pos: [34, 20], dir: 0 } } },
-    // 生徒と先生（話すとひとこと。話せる回数は減らない）。文は仮
-    {
-      id: 'teacher',
-      name: '担任の先生',
-      look: { shape: 'hero', color: '#8a8fa8', scale: 1.08 },
-      at: { morning: { pos: [6.5, 2.4], dir: S }, lunch: { pos: [14, 12], dir: 0, route: [[14, 12], [28, 12]] }, after: { pos: [3.5, 24.5], dir: -S } },
-      lines: [
-        ['担任の先生', 'おはよう。今日も遅刻ギリギリだな。'],
-        ['担任の先生', '弱点をつくと守りが崩れる……って、なんの話だ？　ゲームか？'],
-        ['担任の先生', '最近、夜の街で怪盗のうわさがあるらしい。気をつけて帰れよ。'],
-      ],
-    },
-    {
-      id: 'librarian',
-      name: '図書委員',
-      look: { shape: 'hero', color: '#b48ad8', scale: 0.95 },
-      at: { morning: { pos: [11, 17], dir: Math.PI }, lunch: { pos: [11, 17], dir: Math.PI }, after: { pos: [11, 17], dir: Math.PI } },
-      lines: [
-        ['図書委員', '図書室ではお静かに。'],
-        ['図書委員', 'いちばん奥の棚に、だれも借りない本があるんです。……ふしぎですよね。'],
-      ],
-    },
-    {
-      id: 'shop',
-      name: '購買の店員さん',
-      look: { shape: 'hero', color: '#f0a050', scale: 1.05 },
-      at: { morning: { pos: [19, 18.75], dir: -S }, lunch: { pos: [19, 18.75], dir: -S } },
-      lines: [
-        ['購買の店員さん', 'いらっしゃい！　メロンパンは早い者勝ちだよ。'],
-        ['購買の店員さん', '黒金社長？　うちのパンを買い占めたことがあってねえ……。'],
-      ],
-    },
-    {
-      id: 'basket',
-      name: 'バスケ部の先輩',
-      look: { shape: 'hero', color: '#ff8a3d', scale: 1.12 },
-      at: { lunch: { pos: [30, 20], dir: 0 }, after: { pos: [27, 17], dir: 0, route: [[27, 17], [41, 17], [41, 26], [27, 26]] } },
-      lines: [
-        ['バスケ部の先輩', 'お、アカリ！　入部の話、考えてくれた？'],
-        ['バスケ部の先輩', '体育館の裏、夜になると光ってるって知ってた？'],
-      ],
-    },
-    {
-      id: 'classmateA',
-      name: 'うわさ好きのクラスメイト',
-      look: { shape: 'hero', color: '#70c0a0' },
-      at: { morning: { pos: [3.6, 4.6], dir: 0 }, lunch: { pos: [16, 5], dir: 0, route: [[16, 5], [28, 5]] }, after: { pos: [40, 12], dir: Math.PI } },
-      lines: [
-        ['クラスメイト', 'ねえ聞いた？　夜の学校の屋上で、だれかが空を見てるんだって。'],
-        ['クラスメイト', '怪盗のうわさ、また増えてるよ。黒金邸がねらわれたとか。'],
-      ],
-    },
-    {
-      id: 'classmateB',
-      name: 'のんびりしたクラスメイト',
-      look: { shape: 'hero', color: '#e080a0', scale: 0.97 },
-      at: { morning: { pos: [33, 12], dir: Math.PI }, lunch: { pos: [35, 7], dir: -S } },
-      lines: [
-        ['クラスメイト', '屋上って、風が気持ちいいよね。'],
-        ['クラスメイト', 'シンくん、昼休みはいつも屋上でコーヒー飲んでるよ。'],
-      ],
-    },
-  ],
-  exit: { pos: [1.2, 12], label: '昇降口から帰る（街へ・家へ）' },
-  hidden: [
-    { id: 's_library', pos: [1.4, 25], kind: 'item', items: { note: 2, stone: 80 }, text: 'だれも借りない本に、技の手帳がはさまっていた' },
-    { id: 's_roof', pos: [43, 1], kind: 'item', items: { parts: 10, stone: 80 }, text: '屋上のすみに、だれかの工具箱' },
-    { id: 's_gym', pos: [43, 29], kind: 'item', items: { key: 1, stone: 80 }, text: '体育館の裏に、光る鍵の欠片' },
-    { id: 's_garden', pos: [28.6, 1.2], kind: 'item', items: { book: 2, stone: 80 }, text: '花だんのかげに、参考書' },
+  npcs: npcsIn(SCHOOL_NPCS, 'school_2f'),
+  links: [
+    { pos: [1.2, 12], to: 'school_1f', at: [27.2, 2], dir: W, label: '1階へ' },
+    { pos: [24.8, 12], to: 'school_roof', at: [2.6, 8], dir: N, label: '屋上へ' },
   ],
 };
 
-// 昼の街（寄り道）。商店街・公園の池・路地裏・駅前。お店・つり・うわさ・隠し要素。
+// 1階：廊下・図書室・購買・保健室。西の端が昇降口（下校）。北に中庭と体育館への出入り口、東の階段で2階
 //
-//   z=0 ┌─本屋─┬─ジャンク屋─┬──────────┐
-//       │   商店街          │  公園（池）  │
-//  z=10 ├────────────────┴──────────┤
-//       │            大通り             │
-//  z=14 ├────────┬────────────────┤
-//       │ 路地裏  │      駅前            │
-//  z=24 └────────┴────────────────┘
-//      x=0     x=12      x=24       x=40
-const water = (x: number, z: number, w: number, d: number) => wall(x, z, w, d, 'water', 0.05);
-
-export const TOWN: MapDef = {
-  id: 'town',
-  name: '街',
-  start: [30, 20],
-  startDir: -Math.PI / 2,
-  wallColor: '#e8dccb',
+//   z=0 ┌──中庭へ────体育館へ──┐
+//  昇降口         廊下          階段↑
+//  z=4 ├── ──┬── ──┬── ─┤
+//       │図書室 │ 購買  │保健室│
+//  z=12 │      ├─────┴─────┘
+//  z=16 └─────┘
+//      x=0   x=12  x=22  x=30
+const SCHOOL_1F: MapDef = {
+  id: 'school_1f',
+  name: '1階',
+  start: [27.2, 2],
+  startDir: W,
+  wallColor: '#efe6d4',
   areas: [
-    { name: '商店街', x: 0, z: 0, w: 24, d: 10, floor: '#c4b8a6' },
-    { name: '公園', x: 24, z: 0, w: 16, d: 10, floor: '#82c46f' },
-    { name: '大通り', x: 0, z: 10, w: 40, d: 4, floor: '#8d929c' },
-    { name: '路地裏', x: 0, z: 14, w: 12, d: 10, floor: '#6f6a78' },
-    { name: '駅前', x: 12, z: 14, w: 28, d: 10, floor: '#cfc8bc' },
+    { name: '1階の廊下', x: 0, z: 0, w: 30, d: 4, floor: '#ddd8cb' },
+    { name: '図書室', x: 0, z: 4, w: 12, d: 12, floor: '#9a7656' },
+    { name: '購買', x: 12, z: 4, w: 10, d: 8, floor: '#e7d0a2' },
+    { name: '保健室', x: 22, z: 4, w: 8, d: 8, floor: '#e8eef2' },
   ],
   walls: [
-    wall(-T, -T, 40 + 2 * T, T),
-    wall(-T, 0, T, 24),
-    wall(40, 0, T, 24),
-    wall(-T, 24, 40 + 2 * T, T),
-    // お店の建物（北の壁ぎわ）
-    wall(1, 0, 7, 2.2, 'shopfront', 2.6),
-    wall(10, 0, 8, 2.2, 'shopfront', 2.6),
-    wall(19.5, 0, 4, 2.2, 'shopfront', 2.6),
-    // 公園の池と木
-    water(28, 2, 8, 4.5),
-    wall(25, 7.5, 1.2, 1.2, 'hedge', 2.2),
-    wall(38, 1, 1.2, 1.2, 'hedge', 2.2),
-    // 路地裏の壁と箱
-    wall(12, 14, T, 4),
-    wall(12, 20, T, 4),
-    wall(2, 17, 1.2, 1.2, 'desk', 1.0),
-    wall(8, 21, 1.4, 1.0, 'desk', 1.0),
-    wall(5, 22.5, 1.0, 1.0, 'desk', 0.8),
-    // 駅前のベンチと花だん
-    wall(20, 19, 3, 0.6, 'desk', 0.5),
-    wall(32, 16, 4, 1, 'hedge', 0.7),
+    wall(-T, -T, 30 + 2 * T, T),
+    wall(-T, 0, T, 16),
+    wall(30, 0, T, 12),
+    wall(-T, 16, 12 + 2 * T, T),
+    wall(12, 12, 18.4, T),
+    // 廊下と部屋の間（図書室 5〜7、購買 15〜19、保健室 24〜26 が戸）
+    wall(0, 4, 5, T),
+    wall(7, 4, 8, T),
+    wall(19, 4, 5, T),
+    wall(26, 4, 4, T),
+    wall(12, 4, T, 12.4),
+    wall(22, 4, T, 8),
+    // 図書室：本棚と読書机
+    wall(1, 6.5, 5, 0.7, 'shelf', 2.2),
+    wall(1, 9.5, 5, 0.7, 'shelf', 2.2),
+    wall(1, 12.5, 5, 0.7, 'shelf', 2.2),
+    wall(7.5, 10, 3.5, 1.6, 'desk', 0.8),
+    // 購買：カウンター
+    wall(13, 8.6, 8, 0.6, 'desk', 1.0),
+    // 保健室：ベッド
+    wall(23, 9.6, 2.2, 1.6, 'desk', 0.6),
+    wall(26.6, 9.6, 2.2, 1.6, 'desk', 0.6),
   ],
-  doors: [],
-  shadows: [{ x: 0, z: 14, w: 12, d: 10 }], // 路地裏は暗い
-  terminals: [],
-  cameras: [],
-  patrols: [],
-  chests: [],
+  ...empty,
+  props: [
+    { kind: 'poster', x: 3, z: 0.05, dir: S, color: '#ffd25a' },
+    { kind: 'poster', x: 16, z: 0.05, dir: S, color: '#5ef0a0' },
+    { kind: 'board', x: 26, z: 0.05, w: 3, dir: S },
+    { kind: 'bread', x: 14, z: 8.5, w: 6 },
+    { kind: 'plant', x: 29.4, z: 3.4 },
+    { kind: 'plant', x: 11.4, z: 15.4 },
+  ],
+  npcs: npcsIn(SCHOOL_NPCS, 'school_1f'),
+  links: [
+    { pos: [28.8, 2], to: 'school_2f', at: [2.8, 12], dir: E, label: '2階へ' },
+    { pos: [10, 0.8], to: 'school_garden', at: [8, 7.6], dir: N, label: '中庭へ' },
+    { pos: [22, 0.8], to: 'school_gym', at: [2.8, 3], dir: E, label: '体育館へ' },
+  ],
+  exit: { pos: [1.2, 2], label: '昇降口から帰る（街へ・家へ）' },
+  hidden: [{ id: 's_library', pos: [1.4, 15], kind: 'item', items: { note: 2, stone: 80 }, text: 'だれも借りない本に、技の手帳がはさまっていた' }],
+};
+
+const SCHOOL_GARDEN: MapDef = {
+  id: 'school_garden',
+  name: '中庭',
+  start: [8, 7.6],
+  startDir: N,
+  wallColor: '#efe6d4',
+  areas: [{ name: '中庭', x: 0, z: 0, w: 16, d: 10, floor: '#7cbf6e' }],
+  walls: [...box(16, 10), wall(3, 2, 3, 1, 'hedge', 0.7), wall(11, 2, 3, 1, 'hedge', 0.7), wall(6.5, 6.5, 3, 0.6, 'desk', 0.5)],
+  ...empty,
+  props: [
+    { kind: 'plant', x: 0.8, z: 0.8 },
+    { kind: 'plant', x: 15.2, z: 9.2 },
+  ],
+  npcs: npcsIn(SCHOOL_NPCS, 'school_garden'),
+  links: [{ pos: [8, 9.2], to: 'school_1f', at: [10, 2.4], dir: S, label: '1階へ' }],
+  hidden: [{ id: 's_garden', pos: [14.6, 1.2], kind: 'item', items: { book: 2, stone: 80 }, text: '花だんのかげに、参考書' }],
+};
+
+const SCHOOL_ROOF: MapDef = {
+  id: 'school_roof',
+  name: '屋上',
+  start: [2.6, 8],
+  startDir: N,
+  wallColor: '#d8dde4',
+  areas: [{ name: '屋上', x: 0, z: 0, w: 14, d: 10, floor: '#aab6c4' }],
+  walls: [...box(14, 10), wall(3, 4, 3, 0.6, 'desk', 0.5)],
+  ...empty,
+  props: [{ kind: 'fence', x: 0.4, z: 0.2, w: 13.4, dir: S }],
+  npcs: npcsIn(SCHOOL_NPCS, 'school_roof'),
+  links: [{ pos: [1.2, 9], to: 'school_2f', at: [23.2, 12], dir: W, label: '2階へ' }],
+  hidden: [{ id: 's_roof', pos: [13, 1], kind: 'item', items: { parts: 10, stone: 80 }, text: '屋上のすみに、だれかの工具箱' }],
+};
+
+const SCHOOL_GYM: MapDef = {
+  id: 'school_gym',
+  name: '体育館',
+  start: [2.8, 3],
+  startDir: E,
+  wallColor: '#efe0c8',
+  areas: [{ name: '体育館', x: 0, z: 0, w: 20, d: 16, floor: '#d9a865' }],
+  walls: [...box(20, 16), wall(6, 14, 10, 2, 'desk', 0.9)],
+  ...empty,
+  props: [
+    { kind: 'hoop', x: 0.8, z: 8 },
+    { kind: 'hoop', x: 19.2, z: 8 },
+  ],
+  npcs: npcsIn(SCHOOL_NPCS, 'school_gym'),
+  links: [{ pos: [1.2, 3], to: 'school_1f', at: [22, 2.4], dir: S, label: '1階へ' }],
+  hidden: [{ id: 's_gym', pos: [19, 15], kind: 'item', items: { key: 1, stone: 80 }, text: '体育館の裏に、光る鍵の欠片' }],
+};
+
+/** 学校の場所。はじめは2階の教室 */
+export const SCHOOL_ZONES: MapDef[] = [SCHOOL_2F, SCHOOL_1F, SCHOOL_GARDEN, SCHOOL_ROOF, SCHOOL_GYM];
+export const SCHOOL_START = 'school_2f';
+/** はじめの場所（2階）。古いテストや道具のため */
+export const SCHOOL = SCHOOL_2F;
+
+// 街（寄り道）。駅前（はじめ・家に帰る）から、商店街・路地裏へ。商店街の先に公園
+const water = (x: number, z: number, w: number, d: number) => wall(x, z, w, d, 'water', 0.05);
+const always = (zone: string, pos: [number, number], dir: number) => ({ morning: { zone, pos, dir }, lunch: { zone, pos, dir }, after: { zone, pos, dir } });
+
+const TOWN_NPCS: ZoneNpc[] = [
+  { id: 'bookseller', name: '本屋の店主', look: { shape: 'hero', color: '#7ab8ff', scale: 1.05 }, shop: 'bookstore', at: always('town_street', [4.5, 3.1], S) },
+  { id: 'junkdealer', name: 'ジャンク屋の店主', look: { shape: 'hero', color: '#c08850', scale: 1.1 }, shop: 'junk', at: always('town_street', [14, 3.1], S) },
+  {
+    id: 'oldman',
+    name: '公園のおじいさん',
+    look: { shape: 'hero', color: '#a0a0a0', scale: 0.95 },
+    at: always('town_park', [3, 7], N),
+    lines: [
+      ['公園のおじいさん', '池のコイはな、浮きが沈んだ瞬間に引くんじゃ。'],
+      ['公園のおじいさん', '金色のコイがおるという話じゃ。わしはまだ見たことがないがの。'],
+    ],
+  },
+  {
+    id: 'cat',
+    name: '路地裏のねこ',
+    look: { shape: 'drone', color: '#e0a060', scale: 0.6 },
+    at: always('town_alley', [6, 5], E),
+    lines: [
+      ['路地裏のねこ', 'にゃあ。（この先の箱のかげ、何か光ってたにゃ）'],
+      ['路地裏のねこ', 'にゃ。（黒金邸の裏口は、夜でも開いてることがあるらしいにゃ）'],
+    ],
+  },
+];
+
+const TOWN_STATION: MapDef = {
+  id: 'town_station',
+  name: '駅前',
+  start: [10, 8],
+  startDir: N,
+  wallColor: '#e8dccb',
+  areas: [{ name: '駅前', x: 0, z: 0, w: 20, d: 12, floor: '#cfc8bc' }],
+  walls: [...box(20, 12), wall(8, 4, 3, 0.6, 'desk', 0.5), wall(13, 9, 4, 1, 'hedge', 0.7)],
+  ...empty,
+  props: [{ kind: 'clock', x: 10, z: 11.9, dir: N }],
+  npcs: npcsIn(TOWN_NPCS, 'town_station'),
+  links: [
+    { pos: [1.2, 3], to: 'town_street', at: [21.2, 8], dir: W, label: '商店街へ' },
+    { pos: [1.2, 9], to: 'town_alley', at: [9.2, 2], dir: W, label: '路地裏へ' },
+  ],
+  exit: { pos: [18.6, 6], label: '家に帰る（夜へ）' },
+  hidden: [{ id: 't_station', pos: [19, 11], kind: 'item', items: { note: 1, stone: 80 }, text: '駅のすみに、技の手帳' }],
+};
+
+const TOWN_STREET: MapDef = {
+  id: 'town_street',
+  name: '商店街',
+  start: [21.2, 8],
+  startDir: W,
+  wallColor: '#e8dccb',
+  areas: [{ name: '商店街', x: 0, z: 0, w: 24, d: 10, floor: '#c4b8a6' }],
+  walls: [...box(24, 10), wall(1, 0, 7, 2.2, 'shopfront', 2.6), wall(10, 0, 8, 2.2, 'shopfront', 2.6), wall(19.5, 0, 4, 2.2, 'shopfront', 2.6)],
+  ...empty,
   props: [
     { kind: 'poster', x: 4.5, z: 2.25, dir: S, color: '#7ab8ff' },
     { kind: 'poster', x: 14, z: 2.25, dir: S, color: '#ffb05a' },
     { kind: 'poster', x: 21.5, z: 2.25, dir: S, color: '#ff8fa3' },
     { kind: 'plant', x: 9, z: 2.8 },
     { kind: 'plant', x: 18.7, z: 2.8 },
-    { kind: 'fence', x: 24.2, z: 9.6, w: 15.6, dir: S },
-    { kind: 'clock', x: 30, z: 23.9, dir: -S },
   ],
-  npcs: [
-    {
-      id: 'bookseller',
-      name: '本屋の店主',
-      look: { shape: 'hero', color: '#7ab8ff', scale: 1.05 },
-      shop: 'bookstore',
-      at: { morning: { pos: [4.5, 3.1], dir: S }, lunch: { pos: [4.5, 3.1], dir: S }, after: { pos: [4.5, 3.1], dir: S } },
-    },
-    {
-      id: 'junkdealer',
-      name: 'ジャンク屋の店主',
-      look: { shape: 'hero', color: '#c08850', scale: 1.1 },
-      shop: 'junk',
-      at: { morning: { pos: [14, 3.1], dir: S }, lunch: { pos: [14, 3.1], dir: S }, after: { pos: [14, 3.1], dir: S } },
-    },
-    {
-      id: 'oldman',
-      name: '公園のおじいさん',
-      look: { shape: 'hero', color: '#a0a0a0', scale: 0.95 },
-      at: { morning: { pos: [27, 7], dir: -S }, lunch: { pos: [27, 7], dir: -S }, after: { pos: [27, 7], dir: -S } },
-      lines: [
-        ['公園のおじいさん', '池のコイはな、浮きが沈んだ瞬間に引くんじゃ。'],
-        ['公園のおじいさん', '金色のコイがおるという話じゃ。わしはまだ見たことがないがの。'],
-      ],
-    },
-    {
-      id: 'cat',
-      name: '路地裏のねこ',
-      look: { shape: 'drone', color: '#e0a060', scale: 0.6 },
-      at: { morning: { pos: [6, 19], dir: 0 }, lunch: { pos: [6, 19], dir: 0 }, after: { pos: [6, 19], dir: 0 } },
-      lines: [
-        ['路地裏のねこ', 'にゃあ。（この先の箱のかげ、何か光ってたにゃ）'],
-        ['路地裏のねこ', 'にゃ。（黒金邸の裏口は、夜でも開いてることがあるらしいにゃ）'],
-      ],
-    },
+  npcs: npcsIn(TOWN_NPCS, 'town_street'),
+  links: [
+    { pos: [22.8, 8], to: 'town_station', at: [2.8, 3], dir: E, label: '駅前へ' },
+    { pos: [1.2, 7], to: 'town_park', at: [13.2, 8], dir: W, label: '公園へ' },
   ],
-  spots: [{ id: 'pond', pos: [32, 7.2], kind: 'fish', label: 'つりをする' }],
-  hidden: [
-    { id: 't_alley', pos: [9.4, 22.6], kind: 'item', items: { blueprint: 1, coin: 30, stone: 80 }, text: '箱のかげに、だれかの落とし物' },
-    { id: 't_park', pos: [38.6, 3], kind: 'item', items: { coin: 50, stone: 80 }, text: '木の根もとに、うめられたおこづかい' },
-    { id: 't_station', pos: [39, 23], kind: 'item', items: { note: 1, stone: 80 }, text: '駅のすみに、技の手帳' },
-  ],
-  exit: { pos: [38.6, 12], label: '家に帰る（夜へ）' },
 };
 
-export const MAPS: Record<string, MapDef> = { mansion: MANSION, school: SCHOOL, town: TOWN };
+const TOWN_PARK: MapDef = {
+  id: 'town_park',
+  name: '公園',
+  start: [13.2, 8],
+  startDir: W,
+  wallColor: '#e8dccb',
+  areas: [{ name: '公園', x: 0, z: 0, w: 16, d: 10, floor: '#82c46f' }],
+  walls: [...box(16, 10), water(4, 2, 8, 4.5), wall(1, 7.5, 1.2, 1.2, 'hedge', 2.2), wall(14, 1, 1.2, 1.2, 'hedge', 2.2)],
+  ...empty,
+  props: [{ kind: 'fence', x: 0.2, z: 9.6, w: 15.6, dir: N }],
+  npcs: npcsIn(TOWN_NPCS, 'town_park'),
+  spots: [{ id: 'pond', pos: [8, 7.2], kind: 'fish', label: 'つりをする' }],
+  links: [{ pos: [14.8, 8], to: 'town_street', at: [2.8, 7], dir: E, label: '商店街へ' }],
+  hidden: [{ id: 't_park', pos: [14.6, 3], kind: 'item', items: { coin: 50, stone: 80 }, text: '木の根もとに、うめられたおこづかい' }],
+};
+
+const TOWN_ALLEY: MapDef = {
+  id: 'town_alley',
+  name: '路地裏',
+  start: [9.2, 2],
+  startDir: W,
+  wallColor: '#b8b0bc',
+  areas: [{ name: '路地裏', x: 0, z: 0, w: 12, d: 10, floor: '#6f6a78' }],
+  walls: [...box(12, 10), wall(2, 3, 1.2, 1.2, 'desk', 1.0), wall(8, 7, 1.4, 1.0, 'desk', 1.0), wall(5, 8.5, 1.0, 1.0, 'desk', 0.8)],
+  ...empty,
+  shadows: [{ x: 0, z: 0, w: 12, d: 10 }], // 路地裏は暗い
+  props: [],
+  npcs: npcsIn(TOWN_NPCS, 'town_alley'),
+  links: [{ pos: [10.8, 2], to: 'town_station', at: [2.8, 9], dir: E, label: '駅前へ' }],
+  hidden: [{ id: 't_alley', pos: [9.4, 8.6], kind: 'item', items: { blueprint: 1, coin: 30, stone: 80 }, text: '箱のかげに、だれかの落とし物' }],
+};
+
+export const TOWN_ZONES: MapDef[] = [TOWN_STATION, TOWN_STREET, TOWN_PARK, TOWN_ALLEY];
+export const TOWN_START = 'town_station';
+export const TOWN = TOWN_STATION;
+
+export const MAPS: Record<string, MapDef> = Object.fromEntries([MANSION, ...SCHOOL_ZONES, ...TOWN_ZONES].map((m) => [m.id, m]));

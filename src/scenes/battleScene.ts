@@ -27,14 +27,14 @@ import { openGacha } from '../ui/gachaView';
 import { acceptQuest, completeQuest, questMark, questOf, questState } from '../progress/quests';
 import { watchOrientation } from '../ui/orientation';
 import '../fieldView/field.css';
-import { MANSION, SCHOOL, TOWN } from '../data/maps';
+import { MANSION, MAPS, SCHOOL_START, TOWN_START } from '../data/maps';
 import { choose, openShop, playFish } from '../ui/townViews';
 import { fish, fishLeft } from '../progress/town';
 import { showTalk } from '../ui/talkView';
 import { transition } from '../ui/loading';
-import { FieldState, type FieldEvent } from '../field/logic';
+import { FieldState, LENS_TIME, type FieldEvent } from '../field/logic';
 import type { Vec2 } from '../field/types';
-import { FieldHud } from '../fieldView/fieldHud';
+import { FieldHud, LENS_R } from '../fieldView/fieldHud';
 import { FieldView } from '../fieldView/fieldView';
 
 // 拠点 → 忍び込む（歩く場所）／材料の戦い → ごほうび → 育てる → 前に負けたボスに勝つ、をくり返す。
@@ -434,13 +434,41 @@ export function start(): void {
   // ---- 昼の学校 ----
   /** 昼の街（寄り道）。学校と同じ時間のまま */
   function startTown(): void {
+    enterZone('town', TOWN_START, null, '街に寄り道。お店・池のつり・路地裏のうわさ');
+  }
+
+  /**
+   * 学校・街の「場所」に入る。spawn があれば、そこに出る（出入り口から来たとき）。
+   * 場所ごとに別の地図で、出入り口に歩いて入ると、短い切りかえ画面のあと、つながった場所へ移る。
+   */
+  function enterZone(kind: 'school' | 'town', mapId: string, spawn: { pos: Vec2; dir: number } | null, note: string): void {
     endInfiltration();
-    const state = new FieldState(TOWN, slotOf(save.talksToday), collectedHidden());
-    const view = new FieldView(state, { playerLook: CHARACTERS.akari.look, vrm: vrmOf('akari'), day: true });
+    const map = MAPS[mapId];
+    const state = new FieldState(map, slotOf(save.talksToday), collectedHidden());
+    if (spawn) {
+      state.pos = [...spawn.pos];
+      state.dir = spawn.dir;
+    }
+    const npcVrms: Record<string, VRM | null> = {};
+    for (const id of DEFAULT_PARTY) npcVrms[id] = vrmOf(id);
+    const view = new FieldView(state, { playerLook: CHARACTERS.akari.look, vrm: vrmOf('akari'), day: true, npcVrms, npcMark: (id) => questMark(save, id) });
     view.resize(window.innerWidth, window.innerHeight);
-    const fh = new FieldHud({ onAttack: () => {}, onInteract: fieldInteract, onMenu: townMenu, onLens: toggleLens }, { school: true, menuLabel: '帰る' });
-    fieldRun = { state, view, fh, hackT: null, busy: false, talking: false, mapTick: 0, kind: 'town' };
-    fh.banner('街に寄り道。お店・池のつり・路地裏のうわさ', 'info');
+    const fh =
+      kind === 'school'
+        ? new FieldHud({ onAttack: () => {}, onInteract: fieldInteract, onMenu: schoolMenu, onLens: toggleLens }, { school: true, menuLabel: '下校' })
+        : new FieldHud({ onAttack: () => {}, onInteract: fieldInteract, onMenu: townMenu, onLens: toggleLens }, { school: true, menuLabel: '帰る' });
+    fieldRun = { state, view, fh, hackT: null, busy: false, talking: false, mapTick: 0, kind };
+    fh.banner(note || map.name, 'info');
+  }
+
+  /** 出入り口：つながった場所へ移る（短い切りかえ画面） */
+  function goLink(link: { to: string; at: Vec2; dir: number }): void {
+    const r = fieldRun;
+    if (!r || r.kind === 'mansion') return;
+    r.busy = true;
+    const kind = r.kind;
+    const map = MAPS[link.to];
+    void transition(map.name, kind === 'school' ? '学校' : '街', () => enterZone(kind, link.to, { pos: link.at, dir: link.dir }, ''), 450);
   }
 
   function townMenu(): void {
@@ -466,14 +494,7 @@ export function start(): void {
     hud.clearBattle();
     stage.clearEnemies();
     stage.showParty([], null); // VRM を学校の人にわたす
-    const state = new FieldState(SCHOOL, slotOf(save.talksToday), collectedHidden());
-    const npcVrms: Record<string, VRM | null> = {};
-    for (const id of DEFAULT_PARTY) npcVrms[id] = vrmOf(id);
-    const view = new FieldView(state, { playerLook: CHARACTERS.akari.look, vrm: vrmOf('akari'), day: true, npcVrms, npcMark: (id) => questMark(save, id) });
-    view.resize(window.innerWidth, window.innerHeight);
-    const fh = new FieldHud({ onAttack: () => {}, onInteract: fieldInteract, onMenu: schoolMenu, onLens: toggleLens }, { school: true, menuLabel: '下校' });
-    fieldRun = { state, view, fh, hackT: null, busy: false, talking: false, mapTick: 0, kind: 'school' };
-    fh.banner(note || `${save.day}日目の昼。仲間に話しかけると絆が深まる（1日${TALKS_PER_DAY}回）`, 'info');
+    enterZone('school', SCHOOL_START, null, note || `${save.day}日目の昼。仲間に話しかけると絆が深まる（1日${TALKS_PER_DAY}回）`);
   }
 
   function goHome(): void {
@@ -607,7 +628,7 @@ export function start(): void {
     const r = fieldRun;
     if (!r || r.busy || r.talking) return;
     r.state.lensOn = !r.state.lensOn;
-    if (r.state.lensOn) r.fh.banner('解析レンズ：近くの隠れたものが見える', 'info');
+    if (r.state.lensOn) r.fh.banner('解析レンズ：指でレンズを動かし、あやしい所に重ね続けよう', 'info');
   }
 
   function fieldAttack(): void {
@@ -692,8 +713,12 @@ export function start(): void {
         fieldBattle(e.encounter, e.opening, e.patrol);
         return true;
       case 'found':
+        r.state.lensOn = false; // 見つけたらレンズを閉じる。近づいて「調べる」で拾う
         r.fh.banner(`🔍 ${e.text}`, 'good');
         break;
+      case 'link':
+        goLink(e.link);
+        return true;
       case 'pickup': {
         for (const [k, n] of Object.entries(e.items)) save.items[k] = (save.items[k] ?? 0) + n;
         save.flags[`hidden_${e.id}`] = 1;
@@ -723,11 +748,17 @@ export function start(): void {
     }
     r.view.yaw += r.fh.takeYaw();
     let move: Vec2 = [0, 0];
-    if (r.hackT === null) {
+    let lens: { id: string | null; near: number } = { id: null, near: 0 };
+    if (r.state.lensOn) {
+      // レンズの間は歩かない。レンズを動かして探す
+      r.fh.lensStep(real);
+      const [lx, ly] = r.fh.lensPos();
+      lens = r.view.lensPick(lx, ly, LENS_R);
+    } else if (r.hackT === null) {
       const [sx, sy] = r.fh.stick();
       move = r.view.stickToWorld(sx, sy);
     }
-    const evs = r.state.update(real, { move, run: r.fh.running() });
+    const evs = r.state.update(real, { move, run: r.fh.running(), lens: lens.id });
     for (const e of evs) {
       if (e.t === 'spotted' || e.t === 'alarm') {
         // 見つかったらハッキングは途中で止まる
@@ -752,6 +783,7 @@ export function start(): void {
     r.fh.setArea(r.state.areaName());
     r.fh.setHidden(hidden);
     r.fh.setLens(r.state.lensOn, r.state.hiddenNearby());
+    if (r.state.lensOn) r.fh.setLensView(Math.min(1, r.state.lensProgress / LENS_TIME), lens.near);
     const it = r.state.nearby();
     const label = !it
       ? null
@@ -817,7 +849,10 @@ export function start(): void {
       if (!res.ok || (res.headers.get('content-type') ?? '').includes('text/html')) return;
       await loadVrm(await res.arrayBuffer(), 'models/sample-a.vrm');
       if (hubEl) showHub();
-      else if ((fieldRun as FieldRun | null)?.kind === 'school' && !(fieldRun as FieldRun | null)?.talking) startSchool();
+      else {
+        const fr = fieldRun as FieldRun | null;
+        if (fr && fr.kind !== 'mansion' && !fr.talking && !fr.busy) enterZone(fr.kind, fr.state.map.id, { pos: fr.state.pos, dir: fr.state.dir }, '');
+      }
     } catch {
       /* 無ければ仮の形 */
     }

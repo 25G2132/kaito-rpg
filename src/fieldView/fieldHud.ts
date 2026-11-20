@@ -15,6 +15,9 @@ export interface FieldHudHandlers {
 
 const STICK_R = 56;
 
+/** 解析レンズの丸の半径（画面の点） */
+export const LENS_R = 64;
+
 export class FieldHud {
   readonly root = document.createElement('div');
   run = false;
@@ -28,6 +31,11 @@ export class FieldHud {
   private hidden = document.createElement('div');
   private hack = document.createElement('div');
   private status = document.createElement('div');
+  private lensEl = document.createElement('div');
+  private lensMode = false;
+  private lensXY: [number, number] = [0, 0];
+  private lensDragId: number | null = null;
+  private lensLast: [number, number] = [0, 0];
   private mini = document.createElement('canvas');
   private stickId: number | null = null;
   private stickOrigin: [number, number] = [0, 0];
@@ -58,13 +66,15 @@ export class FieldHud {
     this.hidden.textContent = '影の中：見つからない';
     this.hack.className = 'fhack';
     this.mini.className = 'fmini';
+    this.lensEl.className = 'flensview';
+    this.lensEl.innerHTML = '<i class="gauge"></i><i class="cross"></i><span>指でレンズを動かす</span>';
     this.mini.width = 300;
     this.mini.height = 210;
 
     const menu = document.createElement('button');
     menu.className = 'fbtn fmenu';
     menu.textContent = opts.menuLabel ?? '拠点へ';
-    menu.addEventListener('click', () => h.onMenu());
+    press(menu, () => h.onMenu());
 
     const atk = document.createElement('button');
     atk.className = 'fbtn fatk';
@@ -82,7 +92,7 @@ export class FieldHud {
       this.runBtn.classList.toggle('on', this.run);
     });
 
-    this.root.append(this.touch, this.stickBase, this.area, this.status, this.hidden, this.hack, this.mini, menu, atk, this.interactBtn, this.runBtn, this.lensBtn);
+    this.root.append(this.lensEl, this.touch, this.stickBase, this.area, this.status, this.hidden, this.hack, this.mini, menu, atk, this.interactBtn, this.runBtn, this.lensBtn);
     document.body.appendChild(this.root);
     this.setInteract(null);
     this.setHack(null);
@@ -118,6 +128,14 @@ export class FieldHud {
 
   private down(e: PointerEvent): void {
     this.touch.setPointerCapture(e.pointerId);
+    // レンズの間は、どこを触っても、指の動きでレンズが動く
+    if (this.lensMode) {
+      if (this.lensDragId === null) {
+        this.lensDragId = e.pointerId;
+        this.lensLast = [e.clientX, e.clientY];
+      }
+      return;
+    }
     if (e.clientX < window.innerWidth * 0.45 && this.stickId === null) {
       this.stickId = e.pointerId;
       this.stickOrigin = [e.clientX, e.clientY];
@@ -132,6 +150,11 @@ export class FieldHud {
     }
   }
   private move(e: PointerEvent): void {
+    if (e.pointerId === this.lensDragId) {
+      this.moveLens((e.clientX - this.lensLast[0]) * 1.3, (e.clientY - this.lensLast[1]) * 1.3);
+      this.lensLast = [e.clientX, e.clientY];
+      return;
+    }
     if (e.pointerId === this.stickId) {
       let dx = e.clientX - this.stickOrigin[0];
       let dy = e.clientY - this.stickOrigin[1];
@@ -148,6 +171,10 @@ export class FieldHud {
     }
   }
   private up(e: PointerEvent): void {
+    if (e.pointerId === this.lensDragId) {
+      this.lensDragId = null;
+      return;
+    }
     if (e.pointerId === this.stickId) {
       this.stickId = null;
       this.stickVec = [0, 0];
@@ -187,8 +214,48 @@ export class FieldHud {
   setStatus(text: string): void {
     if (this.status.textContent !== text) this.status.textContent = text;
   }
-  /** レンズ：つけている間は青い画面。近くに何かあればボタンが知らせる */
+  private moveLens(dx: number, dy: number): void {
+    const m = LENS_R * 0.6;
+    this.lensXY = [Math.max(m, Math.min(window.innerWidth - m, this.lensXY[0] + dx)), Math.max(m, Math.min(window.innerHeight - m, this.lensXY[1] + dy))];
+    this.lensEl.style.left = `${this.lensXY[0]}px`;
+    this.lensEl.style.top = `${this.lensXY[1]}px`;
+  }
+  /** レンズの中心（画面の点） */
+  lensPos(): [number, number] {
+    return this.lensXY;
+  }
+  /** キーボード（WASD・矢印）でもレンズを動かす */
+  lensStep(dt: number): void {
+    const k = this.keys;
+    let x = 0;
+    let y = 0;
+    if (k.has('KeyW') || k.has('ArrowUp')) y -= 1;
+    if (k.has('KeyS') || k.has('ArrowDown')) y += 1;
+    if (k.has('KeyD') || k.has('ArrowRight')) x += 1;
+    if (k.has('KeyA') || k.has('ArrowLeft')) x -= 1;
+    if (x || y) this.moveLens(x * 420 * dt, y * 420 * dt);
+  }
+  /** レンズのようす：progress＝重ね続けたぶん（0〜1）、near＝近くにあるほど 1（ゆれが強くなる） */
+  setLensView(progress: number, near: number): void {
+    this.lensEl.style.setProperty('--p', progress.toFixed(3));
+    this.lensEl.style.setProperty('--n', near.toFixed(3));
+    this.lensEl.classList.toggle('near', near > 0.55);
+    this.lensEl.classList.toggle('hit', progress > 0);
+  }
+  /** レンズ：つけている間は、丸いレンズの外が暗くなる。近くに何かあればボタンが知らせる */
   setLens(on: boolean, hint: boolean): void {
+    if (on && !this.lensMode) {
+      // 開いたときは画面のまんなか。スティックや見回しの指は放す
+      this.lensXY = [window.innerWidth / 2, window.innerHeight * 0.45];
+      this.moveLens(0, 0);
+      this.stickId = null;
+      this.stickVec = [0, 0];
+      this.stickBase.classList.remove('on');
+      this.lookId = null;
+      this.setLensView(0, 0);
+    }
+    if (!on) this.lensDragId = null;
+    this.lensMode = on;
     this.root.classList.toggle('lens', on);
     this.lensBtn.classList.toggle('on', on);
     this.lensBtn.classList.toggle('hint', hint && !on);

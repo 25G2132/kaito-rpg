@@ -3,7 +3,7 @@ import type { VRM } from '@pixiv/three-vrm';
 import type { LookDef } from '../battle/types';
 import { ENEMIES } from '../data/enemies';
 import { ActorView } from '../battleView/actor';
-import { segmentHitsRect, type FieldState } from '../field/logic';
+import { LENS_RANGE, segmentHitsRect, type FieldState } from '../field/logic';
 import type { NpcDef, PropDef, Rect } from '../field/types';
 import { CHARACTERS } from '../data/characters';
 
@@ -48,6 +48,7 @@ export class FieldView {
   private npcs: { def: NpcDef; actor: ActorView; label: THREE.Sprite; marks: Record<'!' | '?', THREE.Sprite> }[] = [];
   /** 画面の上に重なる表示（左上の場所名など）。名札がこの下にもぐるときは薄くする */
   avoid: DOMRect[] = [];
+  private linkRings: THREE.Mesh[] = [];
   private tmpV = new THREE.Vector3();
   private npcMark?: (id: string) => '!' | '?' | null;
 
@@ -180,6 +181,22 @@ export class FieldView {
       s.add(light);
     }
 
+    // ほかの場所への出入り口（階段・戸）：床の水色の輪と矢印、行き先の札
+    for (const k of map.links ?? []) {
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.75, 32), new THREE.MeshBasicMaterial({ color: 0x5ec8ff, transparent: true, opacity: 0.85 }));
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(k.pos[0], 0.05, k.pos[1]);
+      s.add(ring);
+      const sign = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture(k.label, '#2f9bd6'), depthTest: false }));
+      sign.scale.set(1.6, 0.4, 1);
+      sign.position.set(k.pos[0], 2.1, k.pos[1]);
+      s.add(sign);
+      const light = new THREE.PointLight(0x5ec8ff, 3, 4);
+      light.position.set(k.pos[0], 1.2, k.pos[1]);
+      s.add(light);
+      this.linkRings.push(ring);
+    }
+
     // 話しかけられる人（名前を頭の上に出す）。仲間は VRM があれば VRM
     for (const n of map.npcs ?? []) {
       const c = n.charId ? CHARACTERS[n.charId] : undefined;
@@ -227,6 +244,32 @@ export class FieldView {
     this.ring.rotation.x = -Math.PI / 2;
     s.add(this.ring);
     this.yaw = state.dir + Math.PI; // 後ろから見る
+  }
+
+  /**
+   * 解析レンズ：画面の (cx, cy) を中心に半径 r の丸の中に、まだ見つけていない隠し要素があるか。
+   * id＝丸の中でいちばん中心に近いもの。near＝近くにあるほど 1 に近い（レンズのゆれに使う）
+   */
+  lensPick(cx: number, cy: number, r: number): { id: string | null; near: number } {
+    const st = this.state;
+    let id: string | null = null;
+    let best = Infinity;
+    let near = 0;
+    for (const h of st.map.hidden ?? []) {
+      if (st.collected.has(h.id) || st.revealed.has(h.id)) continue;
+      if (Math.hypot(h.pos[0] - st.pos[0], h.pos[1] - st.pos[1]) > LENS_RANGE) continue;
+      const p = this.tmpV.set(h.pos[0], 0.6, h.pos[1]).project(this.camera);
+      if (p.z > 1) continue;
+      const sx = ((p.x + 1) / 2) * window.innerWidth;
+      const sy = ((1 - p.y) / 2) * window.innerHeight;
+      const d = Math.hypot(sx - cx, sy - cy);
+      near = Math.max(near, 1 - d / (r * 4));
+      if (d <= r && d < best) {
+        best = d;
+        id = h.id;
+      }
+    }
+    return { id, near: Math.max(0, near) };
   }
 
   /** その場所が画面で、上に重なる表示の下にあるか */
@@ -319,6 +362,9 @@ export class FieldView {
     for (const [id, m] of this.terminals) {
       (m.material as THREE.MeshStandardMaterial).emissive.setHex(st.hacked.has(id) ? 0x30ff80 : 0x1ec8ff);
       (m.material as THREE.MeshStandardMaterial).emissiveIntensity = st.hacked.has(id) ? 0.4 : 0.5 + Math.sin(this.time * 4) * 0.3;
+    }
+    for (const ring of this.linkRings) {
+      (ring.material as THREE.MeshBasicMaterial).opacity = 0.55 + Math.sin(this.time * 4) * 0.3;
     }
     for (const [id, g] of this.hiddenMarks) {
       g.visible = st.revealed.has(id) && !st.collected.has(id);

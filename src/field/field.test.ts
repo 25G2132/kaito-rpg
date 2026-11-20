@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GAME_DATA } from '../data';
-import { MANSION, SCHOOL } from '../data/maps';
-import { canSee, FieldState, inRect, segmentHitsRect } from './logic';
+import { MANSION, MAPS, SCHOOL_START, SCHOOL_ZONES, TOWN_START, TOWN_ZONES } from '../data/maps';
+import { canSee, FieldState, inRect, LENS_RANGE, LENS_TIME, LINK_RANGE, PLAYER_RADIUS, segmentHitsRect } from './logic';
 import type { MapDef, Vec2 } from './types';
 
 const still = { move: [0, 0] as Vec2, run: false };
@@ -155,97 +155,174 @@ describe('黒金邸：端末は影の中', () => {
   });
 });
 
-describe('学校', () => {
-  const slots = ['morning', 'lunch', 'after'] as const;
+const slots = ['morning', 'lunch', 'after'] as const;
 
-  it('どの時間も、人は壁の中になく、話しかけられる。昇降口で下校できる', () => {
-    for (const slot of slots) {
-      const f = new FieldState(SCHOOL, slot);
-      const walls = SCHOOL.walls;
-      for (const n of f.npcs.filter((x) => x.present)) {
-        if (n.def.charId) expect(GAME_DATA.characters[n.def.charId], n.def.id).toBeTruthy();
-        expect(walls.some((r) => inRect(n.pos, r)), `${slot} ${n.def.id}`).toBe(false);
-        for (const p of n.def.at[slot]?.route ?? []) expect(walls.some((r) => inRect(p, r)), `${slot} ${n.def.id} 道`).toBe(false);
-        f.pos = [n.pos[0] + 0.9, n.pos[1]];
-        const others = f.npcs.filter((x) => x !== n && x.present && Math.hypot(x.pos[0] - f.pos[0], x.pos[1] - f.pos[1]) < 1.6);
-        if (!others.length) expect(f.interact(), `${slot} ${n.def.id}`).toEqual({ t: 'talk', npc: n.def.id });
+/** 体が置ける点か（壁から体の半径だけ離れている） */
+const freeAt = (f: FieldState, p: Vec2) =>
+  !f.map.walls.some((r) => r.x - PLAYER_RADIUS < p[0] && p[0] < r.x + r.w + PLAYER_RADIUS && r.z - PLAYER_RADIUS < p[1] && p[1] < r.z + r.d + PLAYER_RADIUS);
+
+/** start から歩いて行ける点を、細かいます目で調べる */
+function reachable(map: MapDef, from: Vec2): (p: Vec2, within?: number) => boolean {
+  const f = new FieldState({ ...map, npcs: [] });
+  const step = 0.25;
+  const key = (x: number, z: number) => `${x},${z}`;
+  const seen = new Set<string>();
+  const ix0 = Math.round(from[0] / step);
+  const iz0 = Math.round(from[1] / step);
+  const queue: [number, number][] = [[ix0, iz0]];
+  seen.add(key(ix0, iz0));
+  while (queue.length) {
+    const [ix, iz] = queue.pop()!;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = ix + dx;
+      const nz = iz + dz;
+      if (seen.has(key(nx, nz)) || nx < -4 || nz < -4 || nx > 400 || nz > 400) continue;
+      if (!freeAt(f, [nx * step, nz * step])) continue;
+      seen.add(key(nx, nz));
+      queue.push([nx, nz]);
+    }
+  }
+  return (p, within = 1.4) => {
+    for (const k of seen) {
+      const [x, z] = k.split(',').map(Number);
+      if (Math.hypot(x * step - p[0], z * step - p[1]) <= within) return true;
+    }
+    return false;
+  };
+}
+
+describe('学校と街：場所に分かれ、出入り口で行き来する', () => {
+  const zones = [...SCHOOL_ZONES, ...TOWN_ZONES];
+
+  it('出入り口は、行き先があり、帰りの出入り口もある。着く所は壁の外で、出入り口から離れている', () => {
+    for (const z of zones) {
+      for (const k of z.links ?? []) {
+        const to = MAPS[k.to];
+        expect(to, `${z.id}→${k.to}`).toBeTruthy();
+        expect((to.links ?? []).some((b) => b.to === z.id), `${k.to} から ${z.id} へもどれる`).toBe(true);
+        const f = new FieldState(to);
+        expect(freeAt(f, k.at), `${z.id}→${k.to} 着く所`).toBe(true);
+        for (const b of to.links ?? []) expect(Math.hypot(b.pos[0] - k.at[0], b.pos[1] - k.at[1]), `${z.id}→${k.to}`).toBeGreaterThan(LINK_RANGE + 0.5);
       }
-      f.pos = [SCHOOL.exit!.pos[0] + 0.5, SCHOOL.exit!.pos[1]];
-      expect(f.interact()).toEqual({ t: 'exit' });
     }
   });
 
-  it('時間が変わると、仲間の居場所が変わる。いない人もいる', () => {
-    const f = new FieldState(SCHOOL, 'morning');
-    const shin = () => f.npcs.find((n) => n.def.id === 'shin')!;
-    const m = [...shin().pos];
-    f.setSlot('lunch');
-    expect(shin().pos).not.toEqual(m);
-    const shop = f.npcs.find((n) => n.def.id === 'shop')!;
-    f.setSlot('after');
-    expect(shop.present).toBe(false);
+  it('どの場所でも、着いた所から、出入り口・出口・つり場・隠し要素・人のそばまで歩ける', () => {
+    for (const z of zones) {
+      const from = z.start;
+      const can = reachable(z, from);
+      const pts: [string, Vec2][] = [
+        ...(z.links ?? []).map((k) => [`link ${k.label}`, k.pos] as [string, Vec2]),
+        ...(z.exit ? [['exit', z.exit.pos] as [string, Vec2]] : []),
+        ...(z.spots ?? []).map((s) => [s.id, s.pos] as [string, Vec2]),
+        ...(z.hidden ?? []).map((h) => [h.id, h.pos] as [string, Vec2]),
+      ];
+      for (const slot of slots) {
+        const f = new FieldState(z, slot);
+        for (const n of f.npcs.filter((x) => x.present)) pts.push([`${slot} ${n.def.id}`, n.pos]);
+      }
+      for (const [name, p] of pts) expect(can(p), `${z.id} ${name}`).toBe(true);
+    }
   });
 
-  it('仲間の体はすり抜けない', () => {
-    const n = SCHOOL.npcs![0];
-    const at = n.at.morning!;
-    const f = new FieldState({ ...SCHOOL, start: [at.pos[0] - 2, at.pos[1]], walls: [], npcs: [n] }, 'morning');
-    for (let i = 0; i < 60; i++) f.update(0.05, { move: [1, 0], run: false });
-    expect(f.pos[0]).toBeLessThan(at.pos[0]);
+  it('同じ時間に、同じ人が2か所にいない。学校の仲間は時間で場所が変わる', () => {
+    for (const group of [SCHOOL_ZONES, TOWN_ZONES]) {
+      for (const slot of slots) {
+        const ids = group.flatMap((z) => (z.npcs ?? []).filter((n) => n.at[slot]).map((n) => n.id));
+        expect(new Set(ids).size, slot).toBe(ids.length);
+      }
+    }
+    const where = (slot: (typeof slots)[number]) => SCHOOL_ZONES.find((z) => z.npcs?.some((n) => n.id === 'shin' && n.at[slot]))?.id;
+    expect(where('morning')).not.toBe(where('lunch'));
+    const shop = SCHOOL_ZONES.flatMap((z) => z.npcs ?? []).find((n) => n.id === 'shop')!;
+    expect(shop.at.after).toBeUndefined();
+  });
+
+  it('どの時間のどの人にも、立てる場所から話しかけられる。人は壁の中にいない', () => {
+    for (const z of zones) {
+      for (const slot of slots) {
+        const f = new FieldState(z, slot);
+        for (const n of f.npcs.filter((x) => x.present)) {
+          if (n.def.charId) expect(GAME_DATA.characters[n.def.charId], n.def.id).toBeTruthy();
+          expect(z.walls.some((r) => inRect(n.pos, r)), `${z.id} ${slot} ${n.def.id}`).toBe(false);
+          for (const p of n.def.at[slot]?.route ?? []) expect(z.walls.some((r) => inRect(p, r)), `${slot} ${n.def.id} 道`).toBe(false);
+          let ok = false;
+          for (let dx = -1.6; dx <= 1.6 && !ok; dx += 0.2) {
+            for (let dz = -1.6; dz <= 1.6 && !ok; dz += 0.2) {
+              f.pos = [n.pos[0] + dx, n.pos[1] + dz];
+              const free = !f.solids().some((r) => r.x - 0.35 < f.pos[0] && f.pos[0] < r.x + r.w + 0.35 && r.z - 0.35 < f.pos[1] && f.pos[1] < r.z + r.d + 0.35);
+              const it = f.nearby();
+              if (free && it?.kind === 'npc' && it.def.id === n.def.id) ok = true;
+            }
+          }
+          expect(ok, `${z.id} ${slot} ${n.def.id}`).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('学校は2階の教室から始まり、1階の昇降口で下校できる。街は駅前から始まり、駅前で家に帰れる', () => {
+    expect(MAPS[SCHOOL_START].areas[0].name).toBe('教室 1-A');
+    const exitZone = SCHOOL_ZONES.find((z) => z.exit)!;
+    expect(exitZone.id).toBe('school_1f');
+    const f = new FieldState(exitZone);
+    f.pos = [exitZone.exit!.pos[0] + 0.5, exitZone.exit!.pos[1]];
+    expect(f.interact()).toEqual({ t: 'exit' });
+    expect(MAPS[TOWN_START].exit).toBeTruthy();
+  });
+
+  it('出入り口に歩いて入ると、ほかの場所へ移る合図が出る', () => {
+    const z = MAPS[SCHOOL_START];
+    const k = z.links![0];
+    const f = new FieldState({ ...z, npcs: [] });
+    f.pos = [k.pos[0] + 1.2, k.pos[1]];
+    let ev: ReturnType<FieldState['update']> = [];
+    for (let i = 0; i < 30 && !ev.some((e) => e.t === 'link'); i++) ev = f.update(0.05, { move: [-1, 0], run: false });
+    expect(ev.find((e) => e.t === 'link')).toMatchObject({ t: 'link', link: { to: k.to } });
   });
 
   it('歩きまわる人は、道にそって動く', () => {
-    const f = new FieldState(SCHOOL, 'lunch');
+    const z = MAPS.school_2f;
+    const f = new FieldState(z, 'lunch');
     const teacher = f.npcs.find((n) => n.def.id === 'teacher')!;
     const p0 = [...teacher.pos];
-    f.pos = [40, 25]; // 遠くにいる
-    for (let i = 0; i < 40; i++) f.update(0.05, { move: [0, 0], run: false });
+    f.pos = [11, 4]; // 教室の中（遠く）
+    for (let i = 0; i < 40; i++) f.update(0.05, still);
     expect(teacher.pos).not.toEqual(p0);
   });
 
-  it('はじめの位置から、教室の戸を通って昇降口まで歩ける', () => {
-    const f = new FieldState(SCHOOL);
-    const go = (dx: number, dz: number, steps: number) => {
-      for (let i = 0; i < steps; i++) f.moveBy(dx * 0.1, dz * 0.1);
-    };
-    go(0, 1, 40); // 戸を抜けて廊下へ
-    go(-1, 0, 200); // 廊下を西へ（昇降口）
-    expect(f.nearby()?.kind).toBe('exit');
-  });
-});
-
-describe('学校：だれにでも話しかけられる', () => {
-  it('どの時間のどの人にも、立てる場所から話しかけられる', () => {
-    for (const slot of ['morning', 'lunch', 'after'] as const) {
-      const f = new FieldState(SCHOOL, slot);
-      for (const n of f.npcs.filter((x) => x.present)) {
-        let ok = false;
-        for (let dx = -1.6; dx <= 1.6 && !ok; dx += 0.2) {
-          for (let dz = -1.6; dz <= 1.6 && !ok; dz += 0.2) {
-            f.pos = [n.pos[0] + dx, n.pos[1] + dz];
-            const free = !f.solids().some((r) => inRect(f.pos, r) || (r.x - 0.35 < f.pos[0] && f.pos[0] < r.x + r.w + 0.35 && r.z - 0.35 < f.pos[1] && f.pos[1] < r.z + r.d + 0.35));
-            const it = f.nearby();
-            if (free && it?.kind === 'npc' && it.def.id === n.def.id) ok = true;
-          }
-        }
-        expect(ok, `${slot} ${n.def.id}`).toBe(true);
-      }
-    }
+  it('仲間の体はすり抜けない', () => {
+    const z = MAPS[SCHOOL_START];
+    const n = z.npcs!.find((x) => x.at.morning)!;
+    const at = n.at.morning!;
+    const f = new FieldState({ ...z, start: [at.pos[0] - 2, at.pos[1]], walls: [], links: [], npcs: [n] }, 'morning');
+    for (let i = 0; i < 60; i++) f.update(0.05, { move: [1, 0], run: false });
+    expect(f.pos[0]).toBeLessThan(at.pos[0]);
   });
 });
 
 describe('解析レンズと隠し要素', () => {
   const free = (f: FieldState) => !f.solids().some((r) => r.x - 0.35 < f.pos[0] && f.pos[0] < r.x + r.w + 0.35 && r.z - 0.35 < f.pos[1] && f.pos[1] < r.z + r.d + 0.35);
 
-  it('レンズをつけないと見えず、つけると近くのものが見える。見えたら拾える', () => {
-    const h = SCHOOL.hidden![0];
-    const f = new FieldState(SCHOOL);
+  const lib = MAPS.school_1f;
+  const libH = lib.hidden![0];
+  it('レンズを開いて、隠れたものに重ね続けると見つかる。見えたら拾える', () => {
+    const h = libH;
+    const f = new FieldState(lib);
     f.pos = [h.pos[0] + 0.8, h.pos[1] - 0.6];
     expect(f.hiddenNearby()).toBe(true);
     f.update(0.05, still);
     expect(f.nearby()?.kind).not.toBe('hidden');
     f.lensOn = true;
-    const ev = f.update(0.05, still);
+    // 重ねていないと見つからない
+    for (let t = 0; t < LENS_TIME * 2; t += 0.1) expect(f.update(0.1, still).some((e) => e.t === 'found')).toBe(false);
+    // 少し重ねて、はずすと、たまった分が減る
+    f.update(LENS_TIME / 2, { ...still, lens: h.id });
+    f.update(LENS_TIME / 2, still);
+    expect(f.lensProgress).toBe(0);
+    // 重ね続けると見つかる
+    let ev: ReturnType<FieldState['update']> = [];
+    for (let t = 0; t < LENS_TIME + 0.2 && !ev.length; t += 0.1) ev = f.update(0.1, { ...still, lens: h.id });
     expect(ev.some((e) => e.t === 'found' && e.id === h.id)).toBe(true);
     const p = f.interact();
     expect(p?.t).toBe('pickup');
@@ -253,16 +330,28 @@ describe('解析レンズと隠し要素', () => {
     expect(f.hiddenNearby()).toBe(false);
   });
 
-  it('もう拾ったものは、次に来ても出てこない', () => {
-    const h = SCHOOL.hidden![0];
-    const f = new FieldState(SCHOOL, 'morning', [h.id]);
+  it('もう拾ったものは、次に来ても出てこない。遠すぎると、重ねても見つからない', () => {
+    const h = libH;
+    const f = new FieldState(lib, 'morning', [h.id]);
     f.pos = [h.pos[0] + 0.8, h.pos[1] - 0.6];
     f.lensOn = true;
-    expect(f.update(0.05, still).some((e) => e.t === 'found')).toBe(false);
+    for (let t = 0; t < LENS_TIME * 2; t += 0.1) expect(f.update(0.1, { ...still, lens: h.id }).some((e) => e.t === 'found')).toBe(false);
+    const g = new FieldState(lib);
+    g.pos = [Math.min(29, h.pos[0] + LENS_RANGE + 2), 2];
+    g.lensOn = true;
+    for (let t = 0; t < LENS_TIME * 2; t += 0.1) expect(g.update(0.1, { ...still, lens: h.id }).some((e) => e.t === 'found')).toBe(false);
+  });
+
+  it('レンズの間は歩かない', () => {
+    const f = new FieldState(lib);
+    const p0 = [...f.pos];
+    f.lensOn = true;
+    for (let i = 0; i < 20; i++) f.update(0.05, { move: [1, 0], run: false });
+    expect(f.pos).toEqual(p0);
   });
 
   it('隠れた敵は戦いになる。どの隠し要素も、立てる場所から調べられる', () => {
-    for (const map of [SCHOOL, MANSION]) {
+    for (const map of Object.values(MAPS)) {
       for (const h of map.hidden ?? []) {
         if (h.kind === 'enemy') expect(GAME_DATA.encounters[h.encounter!], h.id).toBeTruthy();
         const f = new FieldState(map, 'morning');

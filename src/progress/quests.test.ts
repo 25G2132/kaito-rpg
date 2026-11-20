@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { QUESTS } from '../data/quests';
-import { SCHOOL } from '../data/maps';
+import { SCHOOL_ZONES } from '../data/maps';
 import { GAME_DATA } from '../data';
 import { ITEMS } from '../data/items';
 import { recordSeen, recruitAlly } from './growth';
@@ -12,12 +12,12 @@ const q = (id: string) => QUESTS.find((x) => x.id === id)!;
 describe('頼みごと', () => {
   it('データ：頼む人は学校にいて、目標とごほうびの名前がそろっている', () => {
     for (const x of QUESTS) {
-      expect(SCHOOL.npcs!.some((n) => n.id === x.giver), x.id).toBe(true);
+      expect(SCHOOL_ZONES.some((z) => z.npcs?.some((n) => n.id === x.giver)), x.id).toBe(true);
       for (const k of Object.keys(x.reward)) expect(ITEMS[k], x.id).toBeTruthy();
       const g = x.goal;
       if (g.kind === 'defeat') expect(GAME_DATA.enemies[g.enemy]).toBeTruthy();
       if (g.kind === 'win') expect(GAME_DATA.encounters[g.encounter]).toBeTruthy();
-      if (g.kind === 'find') expect([...(SCHOOL.hidden ?? [])].some((h) => h.id === g.hidden)).toBe(true);
+      if (g.kind === 'find') expect(SCHOOL_ZONES.some((z) => z.hidden?.some((h) => h.id === g.hidden)), x.id).toBe(true);
     }
   });
 

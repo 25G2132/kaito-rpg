@@ -84,6 +84,7 @@ export interface MapDef {
   props?: PropDef[]; // 見た目だけの小物（ぶつからない）
   wallColor?: string; // 壁の色（学校は明るく）
   exit?: { pos: Vec2; label: string }; // 出口（学校なら「下校する」）
+  links?: LinkDef[]; // ほかの場所への出入り口（階段・戸）。歩いて入ると移る
 }
 
 /** 見た目だけの小物。dir は向き（壁にはる物の表の向き、ラジアン） */
@@ -126,4 +127,13 @@ export interface NpcDef {
   lines?: string[][]; // [名前, 文, …] の組を、話すたびに順に
   shop?: string; // お店の人なら、お店の id
   at: Partial<Record<Slot, NpcPlace>>; // その時間にいなければ、いない
+}
+
+/** ほかの場所（地図）への出入り口。pos に歩いて入ると、to の地図の at に出る */
+export interface LinkDef {
+  pos: Vec2;
+  to: string;
+  at: Vec2;
+  dir: number;
+  label: string;
 }
