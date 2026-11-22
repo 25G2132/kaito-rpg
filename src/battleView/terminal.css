@@ -251,7 +251,10 @@
   border-radius: 3px;
   background: var(--tbg);
   border-left: 2px solid var(--term);
-  max-width: 360px;
+  max-width: 420px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis; /* 1行にして、合わせ技の列と重ならないように */
 }
 #hud .abtns {
   align-items: center;
