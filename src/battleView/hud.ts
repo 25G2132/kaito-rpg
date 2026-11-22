@@ -46,6 +46,7 @@ export class Hud {
   private party = el('div', 'party');
   private actions = el('div', 'actions hidden');
   private sdesc = el('div', 'sdesc');
+  private infoBtn = el('button', 'abtn info', '？');
   private spBox = el('div', 'sp');
   private basicBtn = el('button', 'abtn basic');
   private skillBtn = el('button', 'abtn skill');
@@ -67,7 +68,7 @@ export class Hud {
     btns.append(this.viewBtn, this.autoBtn, this.speedBtn, this.pauseBtn);
     top.append(btns, this.totalBox);
     const row = el('div', 'abtns');
-    row.append(el('span', 'prompt', 'shin@ura:~$'), this.spBox, this.stolenBtn, this.persuadeBtn, this.basicBtn, this.skillBtn);
+    row.append(this.infoBtn, this.spBox, this.stolenBtn, this.persuadeBtn, this.basicBtn, this.skillBtn);
     this.actions.append(this.sdesc, row);
     this.root.append(this.fx, this.turnbar, this.wave, this.uraLine, top, this.party, this.comboRow, this.actions);
     document.body.appendChild(this.root);
@@ -79,6 +80,9 @@ export class Hud {
     this.skillBtn.addEventListener('click', () => this.h.onSkill());
     this.persuadeBtn.addEventListener('click', () => this.h.onPersuade());
     this.viewBtn.addEventListener('click', () => this.h.onView());
+    // 技の説明は、ふだんは隠し、「？」を押したときだけ出す
+    this.infoBtn.title = '技の説明';
+    this.infoBtn.addEventListener('click', () => this.actions.classList.toggle('show-desc'));
     this.stolenBtn.addEventListener('click', () => this.h.onStolen());
   }
 
@@ -156,11 +160,13 @@ export class Hud {
 
   /** 合わせ技のボタンの光（撃てる・待機中）と、2人のゲージのたまり具合 */
   setCombos(b: Battle, queued: string[]): void {
+    let anyReady = false;
     for (const [id, btn] of this.comboBtns) {
       const c = b.data.combos[id];
       const ready = b.canCombo(id);
       btn.classList.toggle('ready', ready);
       btn.classList.toggle('queued', queued.includes(id));
+      anyReady ||= ready || queued.includes(id);
       // 2人のうち、たまっていないほうの割合
       let p = 1;
       for (const m of c.members) {
@@ -169,6 +175,8 @@ export class Hud {
       }
       (btn.querySelector('i') as HTMLElement).style.width = `${Math.min(100, p * 100)}%`;
     }
+    // 撃てる合わせ技があるときだけ、列を出す
+    this.comboRow.classList.toggle('has-ready', anyReady);
   }
 
   /** 表の上の、裏のようす（1行） */
@@ -186,7 +194,13 @@ export class Hud {
     const tr = Math.round(n.trace * 10);
     const text = `裏&gt; シン［${doing}］　追跡 ${'▮'.repeat(tr)}${'▯'.repeat(10 - tr)}　ゲージ ${Math.round(b.hacker.energy)}%`;
     if (this.uraLine.innerHTML !== text) this.uraLine.innerHTML = text;
-    this.uraLine.classList.toggle('danger', n.trace > 0.6 || n.lockout > 0);
+    const danger = n.trace > 0.6 || n.lockout > 0;
+    this.uraLine.classList.toggle('danger', danger);
+    // ボタンには短く：侵入の進み具合（危ないときは赤く）
+    const short = n.lockout > 0 ? 'しめ出し中' : n.target ? `侵入 ${Math.round((n.progress / n.node(n.target)!.hard) * 100)}%` : 'ハッキング';
+    const small = this.viewBtn.querySelector('small') as HTMLElement;
+    if (small.textContent !== short) small.textContent = short;
+    this.viewBtn.classList.toggle('danger', danger);
   }
 
   /** 表と裏のどちらを見ているか */
@@ -344,13 +358,13 @@ export class Hud {
   }
 
   setTurnOrder(b: Battle): void {
-    const order = b.turnOrder(7);
-    this.turnbar.innerHTML = '<div class="tb-title">QUEUE&gt;</div>';
+    const order = b.turnOrder(5);
+    this.turnbar.innerHTML = `<div class="tb-title">${b.encounter.waves.length > 1 ? `${b.wave + 1}/${b.encounter.waves.length}` : ''}</div>`;
     order.forEach((uid, i) => {
       const u = b.unit(uid);
       if (!u) return;
       const color = u.side === 'ally' ? this.data.elements[u.element].color : '#ff4d6d';
-      const item = el('div', `tb-item ${u.side}${i === 0 && b.activeId === uid ? ' now' : ''}`, u.name.slice(0, 3));
+      const item = el('div', `tb-item ${u.side}${i === 0 && b.activeId === uid ? ' now' : ''}`, u.name.slice(0, 4));
       item.style.setProperty('--c', color);
       this.turnbar.appendChild(item);
     });

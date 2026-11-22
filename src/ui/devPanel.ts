@@ -289,7 +289,7 @@ export function mountDevPanel(api: DevApi): void {
     }
     if (t.dataset.open) {
       openId = openId === t.dataset.open ? null : t.dataset.open;
-      render();
+      render(true);
       return;
     }
     if (t.dataset.go) {
@@ -306,7 +306,13 @@ export function mountDevPanel(api: DevApi): void {
       }
       saveChecks();
       badgeCount();
-      render();
+      // 押した場所にとどまり、次のまだ確かめていない項目を開く
+      if (state !== 'clear') {
+        const i = CHECK_ITEMS.findIndex((x) => x.id === id);
+        const next = [...CHECK_ITEMS.slice(i + 1), ...CHECK_ITEMS.slice(0, i)].find((x) => !checks[x.id]);
+        openId = next?.id ?? null;
+      }
+      render(true);
       return;
     }
     if (t.dataset.dev) actions[t.dataset.dev]?.();
@@ -351,7 +357,19 @@ export function mountDevPanel(api: DevApi): void {
     return `<div class="dv-note">まだ確かめていない（できた以外）：<b>${n}</b> / ${CHECK_ITEMS.length}　項目を押すと、やり方が開く。結果は開発用の保存に残る。</div>${groups}`;
   }
 
-  function render(): void {
+  /** 作りなおす。keep＝いまのスクロールの位置にとどまり、開いた項目が見えるようにする */
+  function render(keep = false): void {
+    const body = panel.querySelector('.dv-body') as HTMLElement | null;
+    const top = body?.scrollTop ?? 0;
+    draw();
+    if (!keep) return;
+    const nb = panel.querySelector('.dv-body') as HTMLElement | null;
+    if (nb) nb.scrollTop = top;
+    const open = panel.querySelector('.ck-item.open') as HTMLElement | null;
+    open?.scrollIntoView({ block: 'nearest' });
+  }
+
+  function draw(): void {
     const s = api.save();
     const b = (id: string, label: string, on?: boolean) => `<button data-dev="${id}" class="${on ? 'on' : ''}">${label}</button>`;
     const gacha = Object.values(BANNERS)

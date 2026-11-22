@@ -88,9 +88,13 @@ export class FieldHud {
     this.lensBtn.className = 'fbtn flens';
     this.lensBtn.innerHTML = '<b>レンズ</b><small>解析</small>';
     press(this.lensBtn, () => h.onLens());
+    // 走る・歩くの設定は、場所を移っても（出入り口・ワープ）、読み込みなおしても続く
+    this.run = loadRunPref();
+    this.runBtn.classList.toggle('on', this.run);
     press(this.runBtn, () => {
       this.run = !this.run;
       this.runBtn.classList.toggle('on', this.run);
+      saveRunPref(this.run);
     });
 
     this.root.append(this.lensEl, this.touch, this.stickBase, this.area, this.status, this.hidden, this.hack, this.mini, menu, atk, this.interactBtn, this.runBtn, this.lensBtn);
@@ -387,4 +391,25 @@ function press(el: HTMLButtonElement, fn: () => void): void {
   el.addEventListener('pointerup', up);
   el.addEventListener('pointercancel', up);
   el.addEventListener('pointerleave', up);
+}
+
+const RUN_KEY = 'kaito-rpg-run';
+let runPref: boolean | null = null;
+/** 走る・歩くの設定（画面を作りなおしても同じにする） */
+function loadRunPref(): boolean {
+  if (runPref !== null) return runPref;
+  try {
+    runPref = localStorage.getItem(RUN_KEY) === '1';
+  } catch {
+    runPref = false;
+  }
+  return runPref;
+}
+function saveRunPref(on: boolean): void {
+  runPref = on;
+  try {
+    localStorage.setItem(RUN_KEY, on ? '1' : '0');
+  } catch {
+    /* 保存できなくても、この間は続く */
+  }
 }

@@ -663,3 +663,141 @@
   pointer-events: none;
   white-space: nowrap;
 }
+
+/* ===== 2026-11-23 見やすく：いつも出すのは「次にだれが動くか・味方の体力とゲージ・押せるコマンド・敵の体力と弱点」だけ ===== */
+/* 裏のようすの1行・総ダメージ・群れの札は出さない（裏は「⇄ 裏へ」のボタンの中に短く、群れは順番の頭に） */
+#hud .uraline,
+#hud .total,
+#hud .wave {
+  display: none !important;
+}
+/* 順番：5人ぶん、大きめ */
+#hud .turnbar {
+  gap: 4px;
+  padding: 4px 8px;
+}
+#hud .tb-item {
+  height: 26px;
+  line-height: 26px;
+  font-size: 12px;
+  min-width: 52px;
+}
+#hud .turnbar .tb-title:empty {
+  display: none;
+}
+/* 味方：名前と体力のバーだけ（顔のまわりの輪がゲージ）。数字は出さない */
+#hud .party {
+  top: calc(max(8px, env(safe-area-inset-top)) + 44px);
+  gap: 6px;
+}
+#hud .pcard {
+  width: 168px;
+  height: 46px;
+  padding: 4px 8px 4px 5px;
+}
+#hud .face {
+  width: 36px;
+  height: 36px;
+}
+#hud .face span {
+  width: 29px;
+  height: 29px;
+  font-size: 15px;
+}
+#hud .pcard .pname {
+  font-size: 13px;
+}
+#hud .pcard .pname .en,
+#hud .pcard .hpnum {
+  display: none;
+}
+#hud .pcard .bar.hp {
+  height: 8px;
+  margin-top: 5px;
+}
+#hud .pcard .ultlabel {
+  right: -56px;
+}
+#hud .pcard.bench {
+  width: 130px;
+  height: 34px;
+}
+/* 右上：小さめ。「⇄ 裏へ」の中に侵入の進み具合、危ないと赤く */
+#hud .tbtn {
+  height: 40px;
+  min-width: 48px;
+  padding: 0 10px;
+}
+#hud .tbtn.viewbtn.danger {
+  background: linear-gradient(135deg, #ff6a85, #b8304e);
+  border-color: #ffd0da;
+  animation: pulse 0.5s infinite alternate;
+}
+/* コマンド：説明は「？」を押したときだけ。ボタンは大きく、文字は名前だけ */
+#hud .sdesc {
+  display: none;
+}
+#hud .actions.show-desc .sdesc {
+  display: block;
+  white-space: normal;
+  max-width: 380px;
+}
+#hud .prompt {
+  display: none;
+}
+#hud .abtns {
+  gap: 8px;
+  padding: 6px 8px;
+}
+#hud .abtn,
+#hud .abtn.basic,
+#hud .abtn.skill {
+  height: 56px;
+  min-width: 118px;
+}
+#hud .abtn .n {
+  font-size: 15px;
+}
+#hud .abtn.info {
+  min-width: 40px;
+  width: 40px;
+  height: 40px;
+  font: 800 16px system-ui, sans-serif;
+  border-radius: 50%;
+}
+/* 合わせ技：撃てるものだけ出す */
+#hud .comborow {
+  bottom: calc(max(6px, env(safe-area-inset-bottom)) + 80px);
+  display: none;
+}
+#hud .comborow.has-ready {
+  display: flex;
+}
+#hud.ura-on .comborow.has-ready {
+  display: none;
+}
+#hud .cbtn:not(.ready):not(.queued) {
+  display: none;
+}
+#hud .cbtn {
+  height: 48px;
+  min-width: 120px;
+}
+#hud .cbtn b {
+  font-size: 13px;
+}
+/* 敵の札：状態の札は小さく1行、守りのバーは細く */
+#hud .etag .chips {
+  max-height: 18px;
+  overflow: hidden;
+}
+/* 裏の画面：右の欄をすっきり */
+.ura .u-side {
+  gap: 8px;
+}
+.ura .u-front .r {
+  margin: 4px 0;
+}
+.ura .u-combos .cbtn {
+  height: 48px;
+}

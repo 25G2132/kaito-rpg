@@ -51,7 +51,7 @@ export class UraView {
         <div class="u-combos"></div>
       </div>
       <div class="u-log"></div>
-      <div class="u-help">光っている点を押すと侵入。検知の光（赤）が来ている線は追跡される</div>`;
+      <div class="u-help">光る点を押して侵入　赤い光が来ている線は追跡される</div>`;
     this.root.prepend(this.canvas);
     this.traceBar = this.root.querySelector('.u-trace i') as HTMLElement;
     this.title = this.root.querySelector('.u-title') as HTMLElement;
@@ -101,7 +101,7 @@ export class UraView {
 
   log(text: string): void {
     this.lines.push(`&gt; ${text}`);
-    if (this.lines.length > 5) this.lines.shift();
+    if (this.lines.length > 2) this.lines.shift();
     this.logBox.innerHTML = this.lines.map((l) => `<div>${l}</div>`).join('');
   }
 
@@ -270,18 +270,20 @@ export class UraView {
     // 文字の欄
     this.traceBar.style.width = `${Math.round(net.trace * 100)}%`;
     this.root.classList.toggle('locked', net.lockout > 0);
-    this.title.textContent = `裏> 警備システム（群れ ${b.wave + 1}/${b.encounter.waves.length}）`;
+    this.title.textContent = '裏> 警備システム';
     const rows = b.allies
       .filter((u) => !u.bench)
       .map((u) => `<div class="r"><span>${u.name}</span><div class="bar hp"><i style="width:${Math.max(0, (u.hp / u.maxHp) * 100)}%"></i></div></div>`)
       .join('');
-    const fhtml = `<div class="t">表：自動で戦闘中</div>${rows}`;
+    const fhtml = `<div class="t">表（自動）</div>${rows}`;
     if (this.front.innerHTML !== fhtml) this.front.innerHTML = fhtml;
-    const ihtml = `シンのゲージ ${Math.round(b.hacker?.energy ?? 0)}%　盗んだ物 ×${b.stolen}`;
+    const ihtml = `ゲージ ${Math.round(b.hacker?.energy ?? 0)}%${b.stolen ? `　盗んだ物 ×${b.stolen}` : ''}`;
     if (this.info.innerHTML !== ihtml) this.info.innerHTML = ihtml;
     for (const [id, btn] of this.comboBtns) {
       btn.classList.toggle('ready', b.canCombo(id));
       btn.classList.toggle('queued', queued.includes(id));
+      // 撃てるものだけ出す
+      btn.style.display = b.canCombo(id) || queued.includes(id) ? '' : 'none';
     }
   }
 }
