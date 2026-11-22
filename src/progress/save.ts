@@ -8,6 +8,8 @@ import { WEAPONS } from '../data/weapons';
 import { START_STONES } from '../data/gacha';
 
 export const SAVE_KEY = 'kaito-rpg-save-v1';
+/** 開発用モード（?dev）の保存。ふつうの保存とは別 */
+export const DEV_SAVE_KEY = 'kaito-rpg-save-dev';
 export const SAVE_VERSION = 1;
 export const START_LEVEL = 5;
 
@@ -148,9 +150,9 @@ export interface Storage {
   setItem(key: string, value: string): void;
 }
 
-export function loadSave(storage: Storage | undefined): { save: SaveData; reset: boolean } {
+export function loadSave(storage: Storage | undefined, key = SAVE_KEY): { save: SaveData; reset: boolean } {
   try {
-    const text = storage?.getItem(SAVE_KEY);
+    const text = storage?.getItem(key);
     if (!text) return { save: defaultSave(), reset: false };
     const save = validateSave(JSON.parse(text));
     return save ? { save, reset: false } : { save: defaultSave(), reset: true };
@@ -159,9 +161,9 @@ export function loadSave(storage: Storage | undefined): { save: SaveData; reset:
   }
 }
 
-export function storeSave(storage: Storage | undefined, save: SaveData): void {
+export function storeSave(storage: Storage | undefined, save: SaveData, key = SAVE_KEY): void {
   try {
-    storage?.setItem(SAVE_KEY, JSON.stringify(save));
+    storage?.setItem(key, JSON.stringify(save));
   } catch {
     /* 保存できない（プライベートモードなど）ときは、そのまま遊べるようにする */
   }

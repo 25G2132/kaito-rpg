@@ -70,6 +70,8 @@ export class HackNet {
   time = 0;
   /** 手で選んだ行き先（自動のときは使わない） */
   order: string | null = null;
+  /** 開発用：追跡ゲージを上げない */
+  noTrace = false;
 
   constructor(enemies: HackEnemy[]) {
     this.build(enemies);
@@ -209,6 +211,7 @@ export class HackNet {
     const wait = o.careful && (lit || this.lightOn(from, this.target, 0.6));
     if (lit && !wait) this.trace = Math.min(1, this.trace + TRACE_RATE * dt);
     else this.trace = Math.max(0, this.trace - TRACE_COOL * dt);
+    if (this.noTrace) this.trace = 0;
     if (this.trace >= 1) {
       // 回線を切られた：しめ出されて入口へ
       this.lockout = LOCKOUT_SEC;

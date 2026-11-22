@@ -86,6 +86,20 @@ export class BattleController {
     }
   }
 
+  /** 開発用：すぐ勝つ・すぐ負ける */
+  devEnd(result: 'won' | 'lost'): void {
+    this.battle.phase = result;
+    this.battle.activeId = null;
+    this.wake();
+  }
+  /** 開発用：敵の体力を1にする */
+  devEnemiesToOne(): void {
+    for (const u of this.battle.aliveEnemies()) {
+      u.hp = 1;
+      this.hud.setHp(u.uid, 1, u.maxHp);
+    }
+  }
+
   /** 見ていない方は自動：裏を見ている間は、表は自動で戦う */
   private get autoNow(): boolean {
     return this.auto || this.view === 'ura';

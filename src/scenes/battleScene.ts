@@ -17,7 +17,8 @@ import { PerfHud } from '../dev/perfHud';
 import { goNight, recordSeen, recruitAlly, sleep, slotOf, talk, talksToNext, TALKS_PER_DAY, type RecruitResult } from '../progress/growth';
 import { SLOT_NAMES, type NpcDef } from '../field/types';
 import { applyRewards, autoInvest, isUnlocked, partyFor, partyPower, recordLoss, rollRewards, type Reward } from '../progress/growth';
-import { defaultSave, loadSave, storeSave } from '../progress/save';
+import { DEV_SAVE_KEY, SAVE_KEY, defaultSave, loadSave, storeSave } from '../progress/save';
+import { isDevMode, mountDevPanel } from '../ui/devPanel';
 import { ITEMS } from '../data/items';
 import { esc, matsHtml, oddsText, slotName, stars } from '../ui/fmt';
 import { GrowthView } from '../ui/growthView';
@@ -52,9 +53,12 @@ export function start(): void {
       return undefined;
     }
   })();
-  const loaded = loadSave(storage);
+  // URL に ?dev を付けると開発用モード：保存は別（ふつうの進み具合をこわさない）
+  const dev = isDevMode();
+  const saveKey = dev ? DEV_SAVE_KEY : SAVE_KEY;
+  const loaded = loadSave(storage, saveKey);
   let save = loaded.save;
-  const persist = () => storeSave(storage, save);
+  const persist = () => storeSave(storage, save, saveKey);
   const rng = makeRng(Date.now());
 
   const canvas = document.getElementById('view') as HTMLCanvasElement;
@@ -852,6 +856,72 @@ export function start(): void {
     stage.render();
     perf?.tick();
   });
+
+  // 開発用モード（?dev）：画面の左下の「開発」ボタンで、何でもできる一覧
+  if (dev) {
+    /** いまの場所（学校・街）に入りなおす */
+    const reenter = () => {
+      const fr = fieldRun;
+      if (fr && fr.kind !== 'mansion') enterZone(fr.kind, fr.state.map.id, { pos: fr.state.pos, dir: fr.state.dir }, '');
+    };
+    const leaveForField = () => {
+      closeHub();
+      hud.closeOverlay();
+      hud.clearBattle();
+      stage.clearEnemies();
+      stage.showParty([], null);
+    };
+    mountDevPanel({
+      save: () => save,
+      setSave: (s) => {
+        save = s;
+      },
+      persist,
+      refresh: () => {
+        if (ctrl) return;
+        if (hubEl) showHub();
+        else reenter();
+      },
+      inBattle: () => !!ctrl,
+      battleEnd: (r) => ctrl?.devEnd(r),
+      enemiesToOne: () => ctrl?.devEnemiesToOne(),
+      setNoTrace: (on) => {
+        const n = ctrl?.battle.net;
+        if (n) n.noTrace = on;
+      },
+      goPlace: (id) => {
+        if (ctrl) return;
+        if (id === 'mansion') {
+          save.phase = 'night';
+          persist();
+          endInfiltration();
+          void transition(MANSION.name, '開発用', startInfiltration);
+          return;
+        }
+        save.phase = 'day';
+        persist();
+        endInfiltration();
+        leaveForField();
+        const map = MAPS[id];
+        void transition(map.name, '開発用', () => enterZone(id.startsWith('town') ? 'town' : 'school', id, null, map.name));
+      },
+      setTime: (t) => {
+        if (ctrl) return;
+        if (t === 'night') {
+          save.phase = 'night';
+          persist();
+          endInfiltration();
+          showHub('開発用：夜にした');
+          return;
+        }
+        save.phase = 'day';
+        save.talksToday = t === 'morning' ? 0 : t === 'lunch' ? 1 : 2;
+        persist();
+        if (fieldRun && fieldRun.kind !== 'mansion') reenter();
+        else startSchool('開発用：時間帯を変えた');
+      },
+    });
+  }
 
   // 開発サーバーだけ：確かめ用に、戦いを一瞬で終わらせる（公開ページには入らない）
   if (import.meta.env.DEV) Object.assign(window, { __kaito: { ctrl: () => ctrl, field: () => fieldRun, skip: skipBattle, save: () => save, invest: () => autoInvest(save, rng), hud } });
