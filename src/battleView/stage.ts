@@ -36,6 +36,8 @@ export class Stage {
   private shakeAmt = 0;
   private camFocus = new THREE.Vector3();
   private camFocusAmt = 0;
+  private camOrbit = 0; // 合わせ技：まわりこむ（ラジアン）
+  private camPull = 0; // 合わせ技：引いて上から（0〜1）
   private bursts: Burst[] = [];
   private raycaster = new THREE.Raycaster();
 
@@ -231,6 +233,38 @@ export class Stage {
     void this.clock.tween(0.3, (p) => (this.camFocusAmt = (1 - p) * 0.55));
   }
 
+  /** 合わせ技のカメラ：zoom＝敵へ寄る、orbit＝まわりこむ、pull＝引いて上から、shake＝大きく揺れる */
+  async comboCam(kind: 'zoom' | 'orbit' | 'pull' | 'shake', foeUids: string[]): Promise<void> {
+    const foes = foeUids.map((id) => this.actors.get(id)).filter((a): a is ActorView => !!a);
+    if (foes.length) {
+      const c = new THREE.Vector3();
+      for (const a of foes) c.add(a.root.position);
+      this.camFocus.copy(c.multiplyScalar(1 / foes.length)).add(new THREE.Vector3(0, 1, 0));
+    }
+    const dur = 1.3;
+    await this.clock.tween(dur, (p) => {
+      const k = Math.sin(p * Math.PI); // 0 → 1 → 0
+      switch (kind) {
+        case 'zoom':
+          this.camFocusAmt = k * 0.75;
+          break;
+        case 'orbit':
+          this.camOrbit = k * 0.9;
+          this.camFocusAmt = k * 0.3;
+          break;
+        case 'pull':
+          this.camPull = k;
+          break;
+        case 'shake':
+          this.shake(0.25 * k);
+          break;
+      }
+    });
+    this.camFocusAmt = 0;
+    this.camOrbit = 0;
+    this.camPull = 0;
+  }
+
   hit(uid: string, strong: boolean): void {
     const a = this.actors.get(uid);
     if (!a) return;
@@ -307,6 +341,11 @@ export class Stage {
     // カメラ：寄り・揺れ
     const look = CAM_LOOK.clone().lerp(this.camFocus, this.camFocusAmt);
     const pos = CAM_POS.clone().lerp(this.camFocus.clone().add(new THREE.Vector3(0.8, 1.0, 4.2)), this.camFocusAmt);
+    if (this.camOrbit) {
+      const off = pos.clone().sub(look).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.camOrbit);
+      pos.copy(look).add(off);
+    }
+    if (this.camPull) pos.add(new THREE.Vector3(0, 3.2 * this.camPull, 3.5 * this.camPull));
     if (this.shakeAmt > 0.001) {
       pos.x += (Math.random() - 0.5) * this.shakeAmt;
       pos.y += (Math.random() - 0.5) * this.shakeAmt;

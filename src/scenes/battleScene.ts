@@ -80,6 +80,9 @@ export function start(): void {
       speed = ctrl?.speed ?? speed;
     },
     onPause: () => showPause(),
+    onView: () => ctrl?.toggleView(),
+    onCombo: (id) => ctrl?.tapCombo(id),
+    onStolen: () => ctrl?.tapStolen(),
   });
 
   /** 一時停止：続ける／撤退する（撤退は負けに数えない） */
@@ -226,11 +229,12 @@ export function start(): void {
       }
       else if (t.dataset.act === 'vrm') picker.click();
       else if (t.dataset.act === 'reset') {
-        if (window.confirm('育てたデータをすべて消して、はじめからにします。よいですか？')) {
+        void choose('育てたデータをすべて消して、はじめからにします。よいですか？', ['すべて消す']).then((i) => {
+          if (i !== 0) return;
           save = defaultSave();
           persist();
           showHub('データを消しました');
-        }
+        });
       }
     });
     document.body.appendChild(hubEl);
@@ -290,7 +294,7 @@ export function start(): void {
     hud.closeOverlay();
     ctrl?.stop();
     const enc = GAME_DATA.encounters[encId];
-    ctrl = new BattleController({ data: GAME_DATA, stage, hud, clock, party: partyFor(save), encounter: encId, vrms: save.party.map(vrmOf), auto, speed, opening: fctx?.opening });
+    ctrl = new BattleController({ data: GAME_DATA, stage, hud, clock, party: partyFor(save), encounter: encId, vrmOf, auto, speed, opening: fctx?.opening });
     const res = await ctrl.run();
     ctrl = null;
     if (res.result === 'retreat') {
@@ -471,9 +475,13 @@ export function start(): void {
     void transition(map.name, kind === 'school' ? '学校' : '街', () => enterZone(kind, link.to, { pos: link.at, dir: link.dir }, ''), 450);
   }
 
-  function townMenu(): void {
-    if (!fieldRun || fieldRun.talking) return;
-    if (window.confirm('家に帰って、夜にしますか？')) goHome();
+  async function townMenu(): Promise<void> {
+    const r = fieldRun;
+    if (!r || r.talking) return;
+    r.talking = true;
+    const i = await choose('家に帰って、夜にしますか？', ['家に帰る']);
+    r.talking = false;
+    if (i === 0) goHome();
   }
 
   /** 昇降口：街へ寄り道するか、家に帰るか */
@@ -506,9 +514,13 @@ export function start(): void {
     });
   }
 
-  function schoolMenu(): void {
-    if (!fieldRun || fieldRun.talking) return;
-    if (window.confirm('下校して、夜にしますか？')) goHome();
+  async function schoolMenu(): Promise<void> {
+    const r = fieldRun;
+    if (!r || r.talking) return;
+    r.talking = true;
+    const i = await choose('下校して、夜にしますか？', ['下校する']);
+    r.talking = false;
+    if (i === 0) goHome();
   }
 
   /** つり（1日3回まで） */
@@ -678,9 +690,13 @@ export function start(): void {
     handleFieldEvent(r.state.interact());
   }
 
-  function fieldMenu(): void {
-    if (!fieldRun || fieldRun.busy) return;
-    if (!window.confirm('拠点へもどりますか？（宝箱で手に入れた物はそのまま）')) return;
+  async function fieldMenu(): Promise<void> {
+    const r = fieldRun;
+    if (!r || r.busy || r.talking) return;
+    r.talking = true;
+    const i = await choose('拠点へもどりますか？（宝箱で手に入れた物はそのまま）', ['拠点へもどる']);
+    r.talking = false;
+    if (i !== 0 || fieldRun !== r) return;
     endInfiltration();
     showHub();
   }
@@ -830,6 +846,7 @@ export function start(): void {
       return;
     }
     const dt = clock.update(real);
+    ctrl?.frame(dt);
     stage.update(dt);
     hud.follow(stage);
     stage.render();

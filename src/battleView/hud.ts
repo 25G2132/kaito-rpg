@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import { SP_MAX, type Battle, type Unit } from '../battle/battle';
-import type { GameData } from '../battle/types';
+import type { ComboDef, GameData } from '../battle/types';
 import type { Stage } from './stage';
+import './terminal.css';
 
-// 画面の上に重ねる表示（順番の表・カード・ボタン・数字の演出）。中身は Battle の状態から作る。
+// 画面の上に重ねる表示（順番・味方・技・数字の演出）。中身は Battle の状態から作る。
+// 見た目は「シンが見ているハッキング画面」風：上に横一列の順番、左に端末の一覧、下にコマンドの列。
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', html = ''): HTMLElementTagNameMap[K] => {
   const e = document.createElement(tag);
@@ -21,6 +23,9 @@ export interface HudHandlers {
   onAuto: () => void;
   onSpeed: () => void;
   onPause: () => void;
+  onView: () => void; // 表と裏の切りかえ
+  onCombo: (id: string) => void;
+  onStolen: () => void; // 盗んだ物を渡す
 }
 
 export class Hud {
@@ -32,6 +37,11 @@ export class Hud {
   private totalBox = el('div', 'total', '<div class="tl">総ダメージ</div><div class="tn">0</div>');
   private total = 0;
   private autoBtn = el('button', 'tbtn', '自動');
+  private viewBtn = el('button', 'tbtn viewbtn', '<b>⇄ 裏へ</b><small>ハッキング</small>');
+  private uraLine = el('div', 'uraline');
+  private comboRow = el('div', 'comborow');
+  private comboBtns = new Map<string, HTMLButtonElement>();
+  private stolenBtn = el('button', 'abtn stolen');
   private speedBtn = el('button', 'tbtn', '×1');
   private party = el('div', 'party');
   private actions = el('div', 'actions hidden');
@@ -54,12 +64,12 @@ export class Hud {
     // 右上：自動・倍速・一時停止。その下に総ダメージ。上の中央に群れの数
     const top = el('div', 'topright');
     const btns = el('div', 'tbtns');
-    btns.append(this.autoBtn, this.speedBtn, this.pauseBtn);
+    btns.append(this.viewBtn, this.autoBtn, this.speedBtn, this.pauseBtn);
     top.append(btns, this.totalBox);
     const row = el('div', 'abtns');
-    row.append(this.spBox, this.persuadeBtn, this.basicBtn, this.skillBtn);
+    row.append(el('span', 'prompt', 'shin@ura:~$'), this.spBox, this.stolenBtn, this.persuadeBtn, this.basicBtn, this.skillBtn);
     this.actions.append(this.sdesc, row);
-    this.root.append(this.fx, this.turnbar, this.wave, top, this.party, this.actions);
+    this.root.append(this.fx, this.turnbar, this.wave, this.uraLine, top, this.party, this.comboRow, this.actions);
     document.body.appendChild(this.root);
 
     this.autoBtn.addEventListener('click', () => this.h.onAuto());
@@ -68,6 +78,8 @@ export class Hud {
     this.basicBtn.addEventListener('click', () => this.h.onBasic());
     this.skillBtn.addEventListener('click', () => this.h.onSkill());
     this.persuadeBtn.addEventListener('click', () => this.h.onPersuade());
+    this.viewBtn.addEventListener('click', () => this.h.onView());
+    this.stolenBtn.addEventListener('click', () => this.h.onStolen());
   }
 
   destroy(): void {
@@ -86,6 +98,10 @@ export class Hud {
     this.tags.clear();
     this.turnbar.innerHTML = '';
     this.wave.textContent = '';
+    this.uraLine.textContent = '';
+    this.comboRow.innerHTML = '';
+    this.comboBtns.clear();
+    this.root.classList.remove('ura-on', 'has-ura');
     this.resetTotal();
     this.actions.classList.add('hidden');
     this.root.classList.add('idle');
@@ -105,10 +121,11 @@ export class Hud {
         'button',
         'pcard',
         `<div class="face" style="--c:${elem.color}"><span>${u.name.slice(0, 1)}</span><em>${elem.name}</em></div>
-         <div class="pinfo"><div class="pname">${u.name}</div>
+         <div class="pinfo"><div class="pname">${u.name}<span class="en"></span></div>
          <div class="bar hp"><b></b><i></i></div><div class="hpnum"></div></div>
          <div class="ultlabel">必殺技</div>`,
       );
+      card.style.setProperty('--c', elem.color);
       card.title = `${c.ult.name}：${c.ult.desc}`;
       card.addEventListener('click', () => this.h.onUlt(u.uid));
       this.party.appendChild(card);
@@ -116,7 +133,71 @@ export class Hud {
     }
     this.arrange(b);
     this.buildEnemies(b);
+    this.buildCombos(b);
+    this.root.classList.toggle('has-ura', !!b.hacker);
     this.syncAll(b);
+  }
+
+  /** 合わせ技のボタン（この戦いで2人とも出ているものだけ） */
+  buildCombos(b: Battle): void {
+    this.comboRow.innerHTML = '<span class="ctitle">合わせ技&gt;</span>';
+    this.comboBtns.clear();
+    for (const c of b.combosAvailable()) {
+      const btn = el('button', 'cbtn', `<b>${c.name}</b><small>${c.fx.sub}</small><i></i>`);
+      btn.style.setProperty('--c', c.fx.color);
+      btn.style.setProperty('--c2', c.fx.color2);
+      btn.title = c.skill.desc;
+      btn.addEventListener('click', () => this.h.onCombo(c.id));
+      this.comboRow.appendChild(btn);
+      this.comboBtns.set(c.id, btn);
+    }
+    this.comboRow.style.display = this.comboBtns.size ? '' : 'none';
+  }
+
+  /** 合わせ技のボタンの光（撃てる・待機中）と、2人のゲージのたまり具合 */
+  setCombos(b: Battle, queued: string[]): void {
+    for (const [id, btn] of this.comboBtns) {
+      const c = b.data.combos[id];
+      const ready = b.canCombo(id);
+      btn.classList.toggle('ready', ready);
+      btn.classList.toggle('queued', queued.includes(id));
+      // 2人のうち、たまっていないほうの割合
+      let p = 1;
+      for (const m of c.members) {
+        const u = m === b.hacker?.defId ? b.hacker : b.aliveAllies().find((x) => x.defId === m);
+        p = Math.min(p, u ? u.energy / (u.energyMax * c.cost) : 0);
+      }
+      (btn.querySelector('i') as HTMLElement).style.width = `${Math.min(100, p * 100)}%`;
+    }
+  }
+
+  /** 表の上の、裏のようす（1行） */
+  setUra(b: Battle): void {
+    const n = b.net;
+    if (!n || !b.hacker) return;
+    let doing = '待機';
+    if (n.lockout > 0) doing = `しめ出し中 ${n.lockout.toFixed(1)}秒`;
+    else if (n.target) {
+      const t = n.node(n.target)!;
+      const name = { entry: '入口', relay: '中継点', weak: '弱点データ', wall: '防壁', buff: '強化', ctrl: '制御' }[t.kind];
+      const who = t.enemy ? b.unit(t.enemy)?.name ?? '' : '';
+      doing = `侵入中：${who}${who ? 'の' : ''}${name} ${Math.round((n.progress / t.hard) * 100)}%`;
+    }
+    const tr = Math.round(n.trace * 10);
+    const text = `裏&gt; シン［${doing}］　追跡 ${'▮'.repeat(tr)}${'▯'.repeat(10 - tr)}　ゲージ ${Math.round(b.hacker.energy)}%`;
+    if (this.uraLine.innerHTML !== text) this.uraLine.innerHTML = text;
+    this.uraLine.classList.toggle('danger', n.trace > 0.6 || n.lockout > 0);
+  }
+
+  /** 表と裏のどちらを見ているか */
+  setView(ura: boolean): void {
+    this.root.classList.toggle('ura-on', ura);
+  }
+
+  setStolen(b: Battle, n: number, active: Unit | null): void {
+    this.stolenBtn.style.display = n > 0 ? '' : 'none';
+    this.stolenBtn.innerHTML = `<div><div class="k">盗んだ物 ×${n}</div><div class="n">渡す</div></div>`;
+    this.stolenBtn.disabled = !active || !b.canUseStolen(active.uid);
   }
 
   /** カードの並び：前の4人（並び順）、そのあとに控え（小さなカード） */
@@ -141,10 +222,7 @@ export class Hud {
     this.tags.clear();
     for (const u of b.enemies) {
       const d = b.enemyDef(u)!;
-      const weak = d.weaknesses
-        .map((w) => this.data.elements[w])
-        .map((e) => `<span class="chip" style="background:${e.color}">${e.name}</span>`)
-        .join('');
+      const weak = this.weakChips(u);
       const tag = el(
         'div',
         `etag${d.boss ? ' boss' : ''}`,
@@ -159,6 +237,25 @@ export class Hud {
       this.root.insertBefore(tag, this.turnbar);
       this.tags.set(u.uid, tag);
     }
+  }
+
+  /** 弱点の札：裏で暴くまでは「？」 */
+  private weakChips(u: Unit): string {
+    if (!u.revealed) return u.weaknesses.map(() => '<span class="chip unknown">？</span>').join('');
+    return u.weaknesses
+      .map((w) => this.data.elements[w])
+      .map((e) => `<span class="chip" style="background:${e.color}">${e.name}</span>`)
+      .join('');
+  }
+  /** 弱点が見えた（裏で暴いた） */
+  setRevealed(_b: Battle, u: Unit): void {
+    const tag = this.tags.get(u.uid);
+    if (!tag) return;
+    const w = tag.querySelector('.weak') as HTMLElement;
+    w.innerHTML = this.weakChips(u);
+    w.classList.remove('pop');
+    void w.offsetWidth;
+    w.classList.add('pop');
   }
 
   // ---------- 状態から表示を合わせる ----------
@@ -196,7 +293,10 @@ export class Hud {
   setEnergy(uid: string, value: number, max: number): void {
     const card = this.cards.get(uid);
     // 顔のまわりの輪が、必殺技ゲージ
-    if (card) (card.querySelector('.face') as HTMLElement).style.setProperty('--e', `${Math.min(100, (value / max) * 100)}%`);
+    if (card) {
+      (card.querySelector('.face') as HTMLElement).style.setProperty('--e', `${Math.min(100, (value / max) * 100)}%`);
+      (card.querySelector('.en') as HTMLElement).textContent = `EN ${Math.min(100, Math.round((value / max) * 100))}%`;
+    }
   }
 
   setUlt(uid: string, ready: boolean, queued: boolean): void {
@@ -227,6 +327,7 @@ export class Hud {
       (tag.querySelector('.st') as HTMLElement).innerHTML = html;
       // 解析中はすべて弱点になるので、弱点の札を光らせる
       tag.classList.toggle('exposed', u.statuses.some((s) => this.data.statuses[s.id]?.allWeak));
+      tag.classList.toggle('firewall', u.statuses.some((s) => s.id === 'firewall'));
     }
     void b;
   }
@@ -243,14 +344,14 @@ export class Hud {
   }
 
   setTurnOrder(b: Battle): void {
-    const order = b.turnOrder(6);
-    this.turnbar.innerHTML = '<div class="tb-title">順番</div>';
+    const order = b.turnOrder(7);
+    this.turnbar.innerHTML = '<div class="tb-title">QUEUE&gt;</div>';
     order.forEach((uid, i) => {
       const u = b.unit(uid);
       if (!u) return;
-      const color = u.side === 'ally' ? this.data.elements[u.element].color : '#3a2030';
-      const item = el('div', `tb-item ${u.side}${i === 0 && b.activeId === uid ? ' now' : ''}`, u.name.slice(0, 1));
-      item.style.background = color;
+      const color = u.side === 'ally' ? this.data.elements[u.element].color : '#ff4d6d';
+      const item = el('div', `tb-item ${u.side}${i === 0 && b.activeId === uid ? ' now' : ''}`, u.name.slice(0, 3));
+      item.style.setProperty('--c', color);
       this.turnbar.appendChild(item);
     });
   }
@@ -366,6 +467,31 @@ export class Hud {
     c.style.setProperty('--c', color);
     this.spawn(el('div', 'dim'), 1.3);
     this.spawn(c, 1.2);
+  }
+
+  /**
+   * 合わせ技の演出。組み合わせごとに色・効果・決めの文字が変わる。
+   * 表＋裏の合わせ技（both）は、裏の回線図も重ねて出す（2つの画面の両方に出る）
+   */
+  comboFx(c: ComboDef, both: boolean): void {
+    const spd = Math.max(1, Number(this.root.style.getPropertyValue('--spd')) || 1);
+    const s = el(
+      'div',
+      `combofx fx-${c.fx.effect} cam-${c.fx.camera}${both ? ' both' : ''}`,
+      `<div class="cf-bg"></div><div class="cf-fx"></div>${both ? '<div class="cf-net"></div>' : ''}
+       <div class="cf-words"><div class="cf-call">${c.fx.callout}</div><div class="cf-sub">${c.fx.sub}　合わせ技「${c.name}」</div></div>`,
+    );
+    s.style.setProperty('--c', c.fx.color);
+    s.style.setProperty('--c2', c.fx.color2);
+    // 裏の画面より上に出す
+    s.style.setProperty('--spd', String(spd));
+    document.body.appendChild(s);
+    window.setTimeout(() => s.remove(), 1900 / spd);
+  }
+
+  /** 裏の出来事を、表の上に小さく流す */
+  hackNote(text: string): void {
+    this.spawn(el('div', 'hacknote', `<span>裏&gt;</span> ${text}`), 2.6);
   }
 
   synergy(detail: string): void {

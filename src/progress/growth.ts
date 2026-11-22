@@ -191,7 +191,8 @@ export function powerOf(save: SaveData, charId: string): number {
 }
 
 export function partyPower(save: SaveData): number {
-  return save.party.reduce((sum, id) => sum + powerOf(save, id), 0);
+  // 裏の担当（シン）もふくめる
+  return partyFor(save).reduce((sum, m) => sum + powerOf(save, m.id), 0);
 }
 
 // ---------- 絆と、昼と夜 ----------

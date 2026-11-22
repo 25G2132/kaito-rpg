@@ -1,0 +1,662 @@
+/*
+  戦いの表示を「シンが見ているハッキング画面」風にする（battle.css の上に重ねる）。
+  置き方：上に横一列の順番（QUEUE）、その下に裏のようす、左に端末の一覧（味方）、下にコマンドの列。
+  （参考作の「左に縦の順番・下に4人の顔・右下に丸いボタン」の形は使わない）
+*/
+
+#hud {
+  --term: #5ef0ff;
+  --term2: #9dffb0;
+  --tbg: rgba(4, 14, 22, 0.82);
+  --mono: ui-monospace, 'Cascadia Mono', Consolas, 'Noto Sans Mono', monospace;
+}
+/* うっすら走査線 */
+#hud:not(.idle)::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(94, 240, 255, 0.035) 0 1px, transparent 1px 3px);
+}
+
+/* ---- 順番：上の横一列 ---- */
+#hud .turnbar {
+  flex-direction: row;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 8px;
+  background: var(--tbg);
+  border: 1px solid rgba(94, 240, 255, 0.35);
+  border-radius: 4px;
+  max-width: calc(100vw - 320px);
+  overflow: hidden;
+}
+#hud .turnbar .tb-title {
+  font: 700 11px var(--mono);
+  color: var(--term);
+  opacity: 1;
+  margin: 0 4px 0 0;
+}
+#hud .tb-item {
+  width: auto;
+  height: 22px;
+  min-width: 44px;
+  padding: 0 6px;
+  border-radius: 2px;
+  border: none;
+  border-left: 3px solid var(--c);
+  background: rgba(255, 255, 255, 0.06);
+  color: #dff9ff;
+  font: 700 11px/22px var(--mono);
+  place-items: initial;
+  display: block;
+  white-space: nowrap;
+}
+#hud .tb-item.enemy {
+  color: #ffc2cf;
+  background: rgba(255, 77, 109, 0.1);
+}
+#hud .tb-item.now {
+  transform: none;
+  margin: 0;
+  background: var(--c);
+  color: #07121a;
+  box-shadow: 0 0 10px var(--c);
+}
+#hud .tb-item + .tb-item::before {
+  content: '›';
+  color: rgba(94, 240, 255, 0.6);
+  margin: 0 4px 0 -2px;
+}
+
+/* 群れの数：順番の下の左 */
+#hud .wave {
+  top: calc(max(8px, env(safe-area-inset-top)) + 32px);
+  left: max(8px, env(safe-area-inset-left));
+  transform: none;
+  font: 700 10px var(--mono);
+  padding: 2px 8px;
+  border-radius: 2px;
+  background: var(--tbg);
+  color: var(--term);
+}
+
+/* 裏のようす（1行） */
+.uraline {
+  display: none;
+  position: absolute;
+  top: calc(max(8px, env(safe-area-inset-top)) + 32px);
+  left: calc(max(8px, env(safe-area-inset-left)) + 92px);
+  font: 600 11px var(--mono);
+  color: var(--term2);
+  padding: 2px 8px;
+  background: var(--tbg);
+  border-left: 2px solid var(--term2);
+  white-space: nowrap;
+}
+#hud.has-ura .uraline:not(:empty) {
+  display: block;
+}
+.uraline.danger {
+  color: #ff8a9e;
+  border-left-color: #ff4d6d;
+  animation: pulse 0.5s infinite alternate;
+}
+
+/* ---- 右上：表と裏の切りかえ（大きく）・自動・倍速・一時停止 ---- */
+#hud .tbtn {
+  border-radius: 4px;
+  font: 700 13px var(--mono);
+  background: var(--tbg);
+  border-color: rgba(94, 240, 255, 0.4);
+  height: 40px;
+}
+#hud .tbtn.viewbtn {
+  display: none;
+  height: 48px;
+  min-width: 96px;
+  color: #07121a;
+  background: linear-gradient(135deg, var(--term), #2fa8c8);
+  border-color: #c8fbff;
+  box-shadow: 0 0 12px rgba(94, 240, 255, 0.6);
+}
+#hud.has-ura .tbtn.viewbtn {
+  display: inline-block;
+}
+#hud .tbtn.viewbtn b {
+  display: block;
+  font-size: 14px;
+}
+#hud .tbtn.viewbtn small {
+  display: block;
+  font-size: 9px;
+}
+#hud .total {
+  background: none;
+}
+#hud .total .tl {
+  font-family: var(--mono);
+  color: var(--term);
+}
+
+/* ---- 味方：左の端末の一覧（1人1行） ---- */
+#hud .party {
+  top: calc(max(8px, env(safe-area-inset-top)) + 58px);
+  bottom: auto;
+  flex-direction: column;
+  gap: 4px;
+}
+#hud .pcard {
+  width: 196px;
+  height: 42px;
+  padding: 3px 6px 3px 4px;
+  border-radius: 3px;
+  background: var(--tbg);
+  border: 1px solid rgba(94, 240, 255, 0.22);
+  border-left: 4px solid var(--c);
+}
+#hud .pcard.now {
+  transform: translateX(8px);
+  border-color: var(--term);
+  border-left-color: var(--c);
+  box-shadow: 0 0 10px rgba(94, 240, 255, 0.35);
+}
+#hud .face {
+  width: 32px;
+  height: 32px;
+}
+#hud .face span {
+  width: 26px;
+  height: 26px;
+  font-size: 14px;
+}
+#hud .face em {
+  width: 13px;
+  height: 13px;
+  font-size: 8px;
+  line-height: 13px;
+}
+#hud .pcard .pname {
+  font: 700 11px var(--mono);
+  display: flex;
+  justify-content: space-between;
+}
+#hud .pcard .pname .en {
+  color: var(--term);
+  font-weight: 600;
+}
+#hud .pcard .hpnum {
+  font-family: var(--mono);
+  font-size: 9px;
+}
+#hud .pcard .ultlabel {
+  top: 50%;
+  left: auto;
+  right: -64px;
+  transform: translateY(-50%);
+  border-radius: 2px;
+  font-family: var(--mono);
+}
+#hud .pcard.bench {
+  width: 150px;
+  height: 30px;
+  opacity: 0.75;
+}
+
+/* ---- 敵の頭の上：端末の札 ---- */
+#hud .etag {
+  border-radius: 3px;
+  background: rgba(20, 6, 12, 0.6);
+  border: 1px solid rgba(255, 77, 109, 0.35);
+}
+#hud .etag.target {
+  border-color: var(--gold);
+}
+#hud .etag .ename {
+  font-family: var(--mono);
+}
+#hud .etag.firewall .ename::before {
+  content: '[防壁] ';
+  color: #ffb12b;
+}
+#hud.ura-on .etag {
+  display: none;
+}
+.chip.unknown {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  border: 1px dashed rgba(255, 255, 255, 0.6);
+}
+.weak.pop .chip {
+  animation: reveal 0.6s ease-out;
+}
+@keyframes reveal {
+  0% { transform: scale(2); filter: brightness(3); }
+  100% { transform: scale(1); filter: none; }
+}
+.chip.status.firewall {
+  background: #ffb12b;
+}
+.chip.status.hijacked {
+  background: var(--term2);
+}
+
+/* ---- コマンドの列（下）：四角いボタン ---- */
+#hud .actions {
+  right: max(8px, env(safe-area-inset-right));
+  bottom: max(6px, env(safe-area-inset-bottom));
+  gap: 4px;
+}
+#hud .sdesc {
+  border-radius: 3px;
+  background: var(--tbg);
+  border-left: 2px solid var(--term);
+  max-width: 360px;
+}
+#hud .abtns {
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  background: var(--tbg);
+  border: 1px solid rgba(94, 240, 255, 0.35);
+  border-radius: 4px;
+}
+#hud .prompt {
+  font: 700 11px var(--mono);
+  color: var(--term2);
+}
+#hud .abtn,
+#hud .abtn.basic,
+#hud .abtn.skill {
+  width: auto;
+  height: 50px;
+  min-width: 104px;
+  border-radius: 3px;
+  padding: 0 10px;
+  background: linear-gradient(180deg, #16303c, #0b1820);
+  border: 1px solid rgba(94, 240, 255, 0.55);
+}
+#hud .abtn.skill {
+  border-color: var(--accent);
+  background: linear-gradient(180deg, #3a1626, #1a0b12);
+}
+#hud .abtn.stolen {
+  border-color: var(--term2);
+  min-width: 84px;
+}
+#hud .abtn .k {
+  font-family: var(--mono);
+}
+#hud .abtn .c {
+  bottom: auto;
+  top: -8px;
+  right: -6px;
+  border-radius: 2px;
+}
+
+/* ---- 合わせ技の列（コマンドの上） ---- */
+.comborow {
+  position: absolute;
+  right: max(8px, env(safe-area-inset-right));
+  bottom: calc(max(6px, env(safe-area-inset-bottom)) + 96px);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.comborow .ctitle {
+  font: 700 11px var(--mono);
+  color: var(--term);
+  background: var(--tbg);
+  padding: 2px 6px;
+}
+.cbtn {
+  position: relative;
+  height: 40px;
+  min-width: 84px;
+  padding: 0 8px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: var(--tbg);
+  color: #cfd8e8;
+  overflow: hidden;
+  text-align: left;
+}
+.cbtn b {
+  display: block;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.cbtn small {
+  display: block;
+  font-size: 9px;
+  opacity: 0.8;
+}
+.cbtn i {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: 0;
+  background: linear-gradient(90deg, var(--c), var(--c2));
+}
+.cbtn.ready {
+  color: #fff;
+  border-color: var(--c);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--c) 45%, #0b1820), color-mix(in srgb, var(--c2) 35%, #0b1820));
+  box-shadow: 0 0 12px var(--c);
+  animation: pulse 0.7s infinite alternate;
+}
+.cbtn.queued::after {
+  content: '待機';
+  position: absolute;
+  right: 3px;
+  top: 2px;
+  font-size: 9px;
+}
+
+/* 裏を見ている間は、表の操作を隠す（表は自動で戦う） */
+#hud.ura-on .party,
+#hud.ura-on .actions,
+#hud.ura-on .comborow,
+#hud.ura-on .turnbar,
+#hud.ura-on .wave,
+#hud.ura-on .uraline,
+#hud.ura-on .topright {
+  display: none;
+}
+
+/* 裏の出来事のお知らせ */
+.hacknote {
+  position: fixed;
+  left: 50%;
+  top: 30%;
+  transform: translateX(-50%);
+  font: 700 13px var(--mono, monospace);
+  color: #9dffb0;
+  background: rgba(4, 14, 22, 0.88);
+  border: 1px solid rgba(157, 255, 176, 0.5);
+  padding: 4px 12px;
+  white-space: nowrap;
+  animation: hacknote 2.6s ease-out forwards;
+  z-index: 30;
+}
+.hacknote span {
+  color: #5ef0ff;
+}
+@keyframes hacknote {
+  0% { opacity: 0; transform: translate(-50%, 8px); }
+  10% { opacity: 1; transform: translate(-50%, 0); }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -12px); }
+}
+
+/* ---- 合わせ技の演出：組み合わせごとに色・効果・カメラの動きが変わる ---- */
+.combofx {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  pointer-events: none;
+  overflow: hidden;
+  animation: cf-fade calc(1.9s / var(--spd, 1)) ease-out forwards;
+}
+.cf-bg {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, color-mix(in srgb, var(--c) 55%, transparent), rgba(0, 0, 0, 0.55) 45%, color-mix(in srgb, var(--c2) 50%, transparent));
+}
+.cf-fx {
+  position: absolute;
+  inset: -20%;
+}
+.fx-flame .cf-fx {
+  background: radial-gradient(circle at 30% 110%, var(--c), transparent 40%), radial-gradient(circle at 70% 120%, var(--c2), transparent 45%),
+    repeating-radial-gradient(circle at 50% 120%, transparent 0 30px, color-mix(in srgb, var(--c) 35%, transparent) 30px 36px);
+  animation: cf-rise calc(1.9s / var(--spd, 1)) ease-out forwards;
+}
+.fx-frost .cf-fx {
+  background: repeating-linear-gradient(60deg, transparent 0 40px, rgba(255, 255, 255, 0.35) 40px 44px), repeating-linear-gradient(-60deg, transparent 0 60px, color-mix(in srgb, var(--c) 45%, transparent) 60px 63px);
+  animation: cf-slide calc(1.9s / var(--spd, 1)) ease-out forwards;
+}
+.fx-storm .cf-fx {
+  background: repeating-conic-gradient(from 0deg, transparent 0 12deg, color-mix(in srgb, var(--c) 40%, transparent) 12deg 16deg);
+  animation: cf-spin calc(1.9s / var(--spd, 1)) linear forwards;
+}
+.fx-grid .cf-fx {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--c2) 55%, transparent) 1px, transparent 1px) 0 0 / 28px 28px,
+    linear-gradient(0deg, color-mix(in srgb, var(--c2) 55%, transparent) 1px, transparent 1px) 0 0 / 28px 28px;
+  animation: cf-scan calc(1.9s / var(--spd, 1)) linear forwards;
+}
+/* 表＋裏の合わせ技：裏の回線図も重ねる（点と線） */
+.cf-net {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle, var(--c2) 3px, transparent 4px) 0 0 / 90px 70px, linear-gradient(30deg, transparent 49%, color-mix(in srgb, var(--c2) 60%, transparent) 50%, transparent 51%) 0 0 / 90px 70px;
+  opacity: 0.55;
+  animation: cf-scan calc(1.9s / var(--spd, 1)) linear reverse forwards;
+}
+.cf-words {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 38%;
+  text-align: center;
+}
+.cf-call {
+  font: 900 46px/1 var(--mono, monospace);
+  letter-spacing: 0.06em;
+  color: #fff;
+  text-shadow: 0 0 18px var(--c), 4px 4px 0 var(--c2), -2px -2px 0 rgba(0, 0, 0, 0.6);
+}
+.cf-sub {
+  margin-top: 8px;
+  font: 700 14px system-ui, sans-serif;
+  color: #fff;
+  text-shadow: 0 2px 0 #000;
+}
+.cam-zoom .cf-words {
+  animation: cf-zoom calc(1.9s / var(--spd, 1)) cubic-bezier(0.2, 0.9, 0.2, 1) forwards;
+}
+.cam-orbit .cf-words {
+  animation: cf-orbit calc(1.9s / var(--spd, 1)) ease-out forwards;
+}
+.cam-pull .cf-words {
+  animation: cf-pull calc(1.9s / var(--spd, 1)) ease-out forwards;
+}
+.cam-shake .cf-words {
+  animation: cf-glitch calc(0.25s / var(--spd, 1)) steps(2) 6;
+}
+@keyframes cf-fade {
+  0% { opacity: 0; }
+  10% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes cf-rise {
+  from { transform: translateY(30%); }
+  to { transform: translateY(-10%); }
+}
+@keyframes cf-slide {
+  from { transform: translateX(-20%); }
+  to { transform: translateX(10%); }
+}
+@keyframes cf-spin {
+  from { transform: rotate(0); }
+  to { transform: rotate(160deg); }
+}
+@keyframes cf-scan {
+  from { background-position: 0 0; }
+  to { background-position: 0 140px; }
+}
+@keyframes cf-zoom {
+  from { transform: scale(3); opacity: 0; }
+  30% { transform: scale(1); opacity: 1; }
+  to { transform: scale(1.08); }
+}
+@keyframes cf-orbit {
+  from { transform: perspective(600px) rotateY(80deg); opacity: 0; }
+  35% { transform: perspective(600px) rotateY(0); opacity: 1; }
+  to { transform: perspective(600px) rotateY(-8deg); }
+}
+@keyframes cf-pull {
+  from { transform: scale(0.4) translateY(40px); opacity: 0; }
+  35% { transform: scale(1) translateY(0); opacity: 1; }
+  to { transform: scale(0.95); }
+}
+@keyframes cf-glitch {
+  0% { transform: translate(-6px, 2px); clip-path: inset(0 0 50% 0); }
+  50% { transform: translate(6px, -2px); clip-path: inset(40% 0 0 0); }
+  100% { transform: none; clip-path: none; }
+}
+
+/* ---- 裏の画面（回線図） ---- */
+.ura {
+  position: fixed;
+  inset: 0;
+  z-index: 12;
+  display: none;
+  background: radial-gradient(ellipse at 40% 50%, #06202c, #020a10 75%);
+  color: #dff9ff;
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, 'Noto Sans Mono', monospace;
+  touch-action: none;
+}
+.ura.on {
+  display: block;
+}
+.ura::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(94, 240, 255, 0.05) 0 1px, transparent 1px 3px);
+}
+.ura canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.ura .u-top {
+  position: absolute;
+  top: max(6px, env(safe-area-inset-top));
+  left: max(8px, env(safe-area-inset-left));
+  right: 220px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 12px;
+  pointer-events: none;
+}
+.ura .u-title {
+  color: #5ef0ff;
+  font-weight: 800;
+}
+.ura .u-trace {
+  flex: 1;
+  max-width: 260px;
+  height: 10px;
+  border: 1px solid #ff4d6d;
+  position: relative;
+}
+.ura .u-trace i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(90deg, #ffb12b, #ff4d6d);
+}
+.ura .u-lock {
+  display: none;
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  transform: translate(-50%, -50%);
+  font: 900 22px ui-monospace, monospace;
+  color: #ff4d6d;
+  padding: 10px 18px;
+  border: 2px solid #ff4d6d;
+  background: rgba(30, 0, 8, 0.85);
+  pointer-events: none;
+}
+.ura.locked .u-lock {
+  display: block;
+  animation: pulse 0.4s infinite alternate;
+}
+.ura .u-side {
+  position: absolute;
+  top: max(6px, env(safe-area-inset-top));
+  right: max(8px, env(safe-area-inset-right));
+  width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.ura .u-back {
+  height: 48px;
+  border-radius: 4px;
+  border: 1px solid #ffd0da;
+  background: linear-gradient(135deg, #ff6a85, #b8304e);
+  color: #fff;
+  font: 800 14px ui-monospace, monospace;
+}
+.ura .u-back small {
+  display: block;
+  font-size: 9px;
+  font-weight: 600;
+}
+.ura .u-front {
+  font-size: 10px;
+  padding: 5px 6px;
+  background: rgba(4, 14, 22, 0.85);
+  border: 1px solid rgba(94, 240, 255, 0.3);
+}
+.ura .u-front .t {
+  color: #ff8a9e;
+  margin-bottom: 3px;
+}
+.ura .u-front .r {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 4px;
+  align-items: center;
+  margin: 2px 0;
+}
+.ura .u-front .bar {
+  height: 6px;
+  margin: 0;
+}
+.ura .u-front .bar > i {
+  background: #5ee08a;
+}
+.ura .u-info {
+  font-size: 11px;
+  padding: 4px 6px;
+  background: rgba(4, 14, 22, 0.85);
+  border-left: 2px solid #9dffb0;
+  color: #9dffb0;
+}
+.ura .u-combos {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ura .u-log {
+  position: absolute;
+  left: max(8px, env(safe-area-inset-left));
+  bottom: max(6px, env(safe-area-inset-bottom));
+  font-size: 11px;
+  line-height: 1.45;
+  color: #9dffb0;
+  pointer-events: none;
+  text-shadow: 0 1px 2px #000;
+}
+.ura .u-log div:not(:last-child) {
+  opacity: 0.55;
+}
+.ura .u-help {
+  position: absolute;
+  left: 50%;
+  bottom: max(6px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: rgba(223, 249, 255, 0.75);
+  pointer-events: none;
+  white-space: nowrap;
+}

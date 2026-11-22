@@ -1,5 +1,6 @@
 import { Battle, type BattleEvent, type Opening } from '../battle/battle';
-import { autoSwap, chooseCommand, readyUltimates } from '../battle/auto';
+import { autoSwap, chooseCommand, readyCombos, readyUltimates, stolenTarget } from '../battle/auto';
+import { UraView } from './uraView';
 import { playUltGame } from './ultGame';
 import type { GameData, PartyMember } from '../battle/types';
 import type { GameClock } from './clock';
@@ -7,10 +8,11 @@ import type { Hud } from './hud';
 import type { Stage } from './stage';
 import type { VRM } from '@pixiv/three-vrm';
 
-// 戦いの計算（Battle）と画面（Stage・Hud）をつなぐ。
+// 戦いの計算（Battle）と画面（Stage・Hud・裏の画面）をつなぐ。
 // Battle が返す出来事を、順に動き・数字・演出にして見せる。
+// 表（前で戦う）と裏（ハッキング）の2つの画面を行き来できる。見ていない方は自動で動く。裏は時間で進む。
 
-type Input = { kind: 'basic' | 'skill' } | { kind: 'wake' } | { kind: 'swap'; out: string; in: string } | { kind: 'persuade' };
+type Input = { kind: 'basic' | 'skill' } | { kind: 'wake' } | { kind: 'swap'; out: string; in: string } | { kind: 'persuade' } | { kind: 'stolen' };
 
 export interface RunResult {
   result: 'won' | 'lost' | 'retreat';
@@ -33,6 +35,10 @@ export class BattleController {
   speed = 1;
   private target: string | null = null;
   private ultQueue: { uid: string; target?: string }[] = [];
+  private comboQueue: { id: string; target?: string }[] = [];
+  /** いま見ている画面 */
+  view: 'omote' | 'ura' = 'omote';
+  private ura: UraView | null = null;
   private swapSel: string | null = null;
   private waiting: ((i: Input) => void) | null = null;
   private stopped = false;
@@ -50,7 +56,7 @@ export class BattleController {
     clock: GameClock;
     party: PartyMember[];
     encounter: string;
-    vrms: (VRM | null)[] | null;
+    vrmOf: (charId: string) => VRM | null;
     auto: boolean;
     opening?: Opening;
     speed: number;
@@ -62,13 +68,81 @@ export class BattleController {
     this.auto = opts.auto;
     this.speed = opts.speed;
     this.battle = new Battle(opts.data, { party: opts.party, encounter: opts.encounter, seed: Date.now(), opening: opts.opening });
-    this.stage.setAllies(this.battle, opts.vrms);
+    this.stage.setAllies(this.battle, this.battle.allies.map((u) => opts.vrmOf(u.defId)));
     this.stage.setEnemies(this.battle, true);
     this.hud.build(this.battle);
     this.hud.setAuto(this.auto);
     this.hud.setSpeed(this.speed);
     this.clock.speed = this.speed;
     this.pickDefaultTarget();
+    if (this.battle.hacker) {
+      this.ura = new UraView({
+        onBack: () => this.toggleView(),
+        onNode: (id) => {
+          if (!this.paused) this.battle.net?.choose(id);
+        },
+        onCombo: (id) => this.tapCombo(id),
+      });
+    }
+  }
+
+  /** 見ていない方は自動：裏を見ている間は、表は自動で戦う */
+  private get autoNow(): boolean {
+    return this.auto || this.view === 'ura';
+  }
+
+  /** 表と裏を切りかえる */
+  toggleView(): void {
+    if (!this.ura || this.paused || this.battle.ended) return;
+    this.view = this.view === 'omote' ? 'ura' : 'omote';
+    this.ura.show(this.view === 'ura', this.battle);
+    this.hud.setView(this.view === 'ura');
+    // 表の入力待ちなら、自動に任せるために起こす
+    this.wake();
+  }
+
+  /**
+   * 毎コマ：裏の時間を進める（倍速に合わせ、一時停止中は止まる）。
+   * 裏を見ていれば手で遊ぶ（速い・光は自分でよける）。見ていなければシンが自動で（遅い・安全）
+   */
+  frame(dt: number): void {
+    const b = this.battle;
+    if (this.stopped || b.ended) return;
+    if (b.net && dt > 0) {
+      const manual = this.view === 'ura';
+      const ev = b.advanceUra(dt, manual ? 'manual' : 'auto', manual ? { autoPick: false, careful: false } : undefined);
+      for (const e of ev) this.showUra(e);
+    }
+    const queued = this.comboQueue.map((q) => q.id);
+    if (b.hacker) this.hud.setUra(b);
+    this.hud.setCombos(b, queued);
+    const waitingActor = this.waiting && b.phase === 'command' && !this.autoNow ? b.active ?? null : null;
+    this.hud.setStolen(b, b.stolen, waitingActor);
+    if (this.ura?.visible) this.ura.draw(b, dt, queued);
+  }
+
+  /** 裏の出来事を、表と裏の両方に小さく出す（動きは止めない） */
+  private showUra(e: BattleEvent): void {
+    const b = this.battle;
+    switch (e.t) {
+      case 'hack':
+        this.ura?.log(e.text);
+        if (this.view === 'omote' && e.node !== 'relay') this.hud.hackNote(e.text);
+        break;
+      case 'reveal': {
+        const u = b.unit(e.target);
+        if (u) this.hud.setRevealed(b, u);
+        break;
+      }
+      case 'status':
+      case 'statusEnd': {
+        const u = b.unit(e.target);
+        if (u) this.hud.setStatuses(b, u);
+        break;
+      }
+      default:
+        break;
+    }
   }
 
   /** 一時停止：時計を止める（動き・待ちがすべて止まる） */
@@ -97,6 +171,16 @@ export class BattleController {
   tapBasic(): void {
     this.answer({ kind: 'basic' });
   }
+  /** 盗んだ物を、いま番の味方に渡す */
+  tapStolen(): void {
+    this.answer({ kind: 'stolen' });
+  }
+  /** 合わせ技（番を待たずに割り込む） */
+  tapCombo(id: string): void {
+    if (this.paused || this.auto || !this.battle.canCombo(id) || this.comboQueue.some((q) => q.id === id)) return;
+    this.comboQueue.push({ id });
+    this.wake();
+  }
   tapPersuade(): void {
     if (this.target && this.battle.canPersuade(this.target)) this.answer({ kind: 'persuade' });
   }
@@ -105,7 +189,7 @@ export class BattleController {
   }
   /** カードを押した：控えなら入れかえの選択、選んでいれば入れかえ、それ以外は必殺技 */
   tapUlt(uid: string): void {
-    if (this.auto || this.paused) return;
+    if (this.autoNow || this.paused) return;
     const b = this.battle;
     const u = b.unit(uid);
     if (u?.bench) {
@@ -177,14 +261,20 @@ export class BattleController {
       const actor = b.active!;
       this.hud.setActive(actor.uid);
       this.stage.setActive(actor.uid);
-      if (this.auto) {
+      if (this.autoNow) {
         const s = autoSwap(b);
         if (s) {
           await this.play(b.swap(s.out, s.in));
           continue;
         }
+        const st = stolenTarget(b);
+        if (st) {
+          await this.play(b.useStolen(st));
+          continue;
+        }
+        for (const c of readyCombos(b)) if (!this.comboQueue.some((q) => q.id === c.id)) this.comboQueue.push(c);
         for (const u of readyUltimates(b)) this.ultQueue.push(u);
-        if (this.ultQueue.length) continue;
+        if (this.ultQueue.length || this.comboQueue.length) continue;
         const c = chooseCommand(b);
         await this.clock.sleep(0.15);
         await this.play(b.command(c.kind, c.target));
@@ -201,6 +291,10 @@ export class BattleController {
         await this.play(b.swap(input.out, input.in));
         continue;
       }
+      if (input.kind === 'stolen') {
+        if (b.canUseStolen(actor.uid)) await this.play(b.useStolen(actor.uid));
+        continue;
+      }
       if (input.kind === 'persuade') {
         await this.play(b.persuade(this.target!));
         continue;
@@ -209,12 +303,29 @@ export class BattleController {
       await this.play(b.command(input.kind, this.target ?? undefined));
     }
     this.hud.showCommand(b, null);
+    this.ura?.destroy();
+    this.ura = null;
+    this.view = 'omote';
+    this.hud.setView(false);
     const seconds = Math.round((performance.now() - this.startedAt - this.pausedTotal) / 1000);
     const result = this.stopped && !b.ended ? 'retreat' : b.phase === 'won' ? 'won' : 'lost';
     return { result, turns: b.turnCount, biggest: this.biggest, synergies: this.synergies, seconds, totalDamage: this.hud.totalDamage, recruited: [...b.recruited], defeated: [...b.defeatedIds] };
   }
 
   private async flushUlts(): Promise<void> {
+    // 合わせ技（組み合わせごとの演出）
+    while (this.comboQueue.length && !this.battle.ended && !this.stopped) {
+      const q = this.comboQueue.shift()!;
+      if (!this.battle.canCombo(q.id)) continue;
+      this.ensureTarget();
+      const def = this.data.combos[q.id];
+      const both = def.members.some((m) => m === this.battle.hacker?.defId);
+      this.hud.comboFx(def, both);
+      if (both) this.ura?.flash(def.fx.color);
+      await this.stage.comboCam(def.fx.camera, this.battle.aliveEnemies().map((u) => u.uid));
+      if (!this.battle.canCombo(q.id)) continue;
+      await this.play(this.battle.combo(q.id, q.target ?? this.target ?? undefined));
+    }
     while (this.ultQueue.length && !this.battle.ended && !this.stopped) {
       const q = this.ultQueue.shift()!;
       if (!this.battle.canUlt(q.uid)) continue;
@@ -223,7 +334,7 @@ export class BattleController {
       let boost = 1;
       const u = this.battle.unit(q.uid)!;
       const c = this.battle.charDef(u);
-      if (!this.auto && c) boost = await playUltGame(c.ultGame ?? 'mash', u.name, this.data.elements[u.element]?.color ?? '#fff');
+      if (!this.autoNow && c) boost = await playUltGame(c.ultGame ?? 'mash', u.name, this.data.elements[u.element]?.color ?? '#fff');
       if (!this.battle.canUlt(q.uid)) continue;
       await this.play(this.battle.ultimate(q.uid, q.target ?? this.target ?? undefined, boost));
     }
