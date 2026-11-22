@@ -1,6 +1,7 @@
 import { makeRng } from '../battle/rng';
 import { CHARACTERS } from '../data/characters';
 import { BANNERS } from '../data/gacha';
+import { CHECKLIST, CHECK_ITEMS } from '../data/checklist';
 import { SLOTS } from '../data/gear';
 import { ITEMS } from '../data/items';
 import { MAPS } from '../data/maps';
@@ -17,6 +18,7 @@ import './devPanel.css';
 // 開発用の「なんでもできるモード」。URL に ?dev を付けたときだけ出る（ふつうに遊ぶ人には見えない）。
 // 保存はふつうのものと別（DEV_SAVE_KEY）。ふつうの進み具合はこわさない。
 // 画面の左下の小さな「開発」ボタンで一覧を開く。どの操作も、ひとつ前にもどせる。
+// 「確かめること」：まだスマホで確かめていないものの一覧（中身は src/data/checklist.ts、docs/check-list.md と同じ）。
 
 /** URL に ?dev が付いているか */
 export const isDevMode = (): boolean => typeof location !== 'undefined' && new URLSearchParams(location.search).has('dev');
@@ -33,6 +35,9 @@ export interface DevApi {
   battleEnd: (result: 'won' | 'lost') => void;
   enemiesToOne: () => void;
   setNoTrace: (on: boolean) => void;
+  fillEnergy: () => void;
+  /** 「確かめること」の「行く」（checklist.ts の go） */
+  go: (where: string) => void;
   // 場所と時間
   goPlace: (mapId: string) => void;
   setTime: (t: 'morning' | 'lunch' | 'after' | 'night') => void;
@@ -40,6 +45,9 @@ export interface DevApi {
 
 const UNDO_MAX = 20;
 const OPT_KEY = 'kaito-rpg-dev-options';
+/** 「確かめること」の結果（開発用の保存。ふつうの保存とは別） */
+const CHECK_KEY = 'kaito-rpg-dev-checks';
+type CheckResult = { state: 'ok' | 'ng'; memo: string; at: string };
 
 interface DevOptions {
   infiniteStone: boolean;
@@ -63,12 +71,33 @@ export function mountDevPanel(api: DevApi): void {
     }
   };
   const rng = makeRng(Date.now());
+  let tab: 'tools' | 'checks' = 'checks';
+  let checks: Record<string, CheckResult> = {};
+  try {
+    checks = JSON.parse(localStorage.getItem(CHECK_KEY) ?? '{}');
+  } catch {
+    /* 読めなければ空 */
+  }
+  const saveChecks = () => {
+    try {
+      localStorage.setItem(CHECK_KEY, JSON.stringify(checks));
+    } catch {
+      /* 保存できなくても使える */
+    }
+  };
+  const remaining = () => CHECK_ITEMS.filter((it) => checks[it.id]?.state !== 'ok').length;
+  let openId: string | null = null;
 
   // 画面の端の「開発中」と、開くボタン
   const badge = document.createElement('div');
   badge.className = 'devbadge';
-  badge.innerHTML = '<span>開発中</span><button>開発</button>';
+  badge.innerHTML = '<span>開発中</span><button>開発</button><em></em>';
   document.body.appendChild(badge);
+  const badgeCount = () => {
+    const n = remaining();
+    (badge.querySelector('em') as HTMLElement).textContent = n ? `確かめること ${n}` : '';
+  };
+  badgeCount();
   const panel = document.createElement('div');
   panel.className = 'devpanel';
   document.body.appendChild(panel);
@@ -200,6 +229,7 @@ export function mountDevPanel(api: DevApi): void {
     win: () => (api.inBattle() ? api.battleEnd('won') : toast('戦いの中で使う')),
     lose: () => (api.inBattle() ? api.battleEnd('lost') : toast('戦いの中で使う')),
     hp1: () => (api.inBattle() ? api.enemiesToOne() : toast('戦いの中で使う')),
+    energy: () => (api.inBattle() ? api.fillEnergy() : toast('戦いの中で使う')),
     noTrace: () => {
       opts.noTrace = !opts.noTrace;
       saveOpts();
@@ -252,11 +282,74 @@ export function mountDevPanel(api: DevApi): void {
   panel.addEventListener('click', (ev) => {
     const t = (ev.target as HTMLElement).closest('button') as HTMLButtonElement | null;
     if (!t) return;
+    if (t.dataset.tab) {
+      tab = t.dataset.tab as 'tools' | 'checks';
+      render();
+      return;
+    }
+    if (t.dataset.open) {
+      openId = openId === t.dataset.open ? null : t.dataset.open;
+      render();
+      return;
+    }
+    if (t.dataset.go) {
+      panel.classList.remove('on');
+      api.go(t.dataset.go);
+      return;
+    }
+    if (t.dataset.check) {
+      const [id, state] = t.dataset.check.split(':');
+      if (state === 'clear') delete checks[id];
+      else {
+        const memo = (panel.querySelector(`textarea[data-memo="${id}"]`) as HTMLTextAreaElement | null)?.value ?? checks[id]?.memo ?? '';
+        checks[id] = { state: state as 'ok' | 'ng', memo: state === 'ng' ? memo : '', at: new Date().toISOString().slice(0, 16).replace('T', ' ') };
+      }
+      saveChecks();
+      badgeCount();
+      render();
+      return;
+    }
     if (t.dataset.dev) actions[t.dataset.dev]?.();
     else if (t.dataset.place) place(t.dataset.place);
     else if (t.dataset.time) time(t.dataset.time as 'morning' | 'lunch' | 'after' | 'night');
     else if (t.dataset.close) panel.classList.remove('on');
   });
+
+  panel.addEventListener('input', (ev) => {
+    const t = ev.target as HTMLTextAreaElement;
+    const id = t.dataset.memo;
+    if (!id || !checks[id]) return;
+    checks[id].memo = t.value;
+    saveChecks();
+  });
+
+  /** 「確かめること」の一覧 */
+  function renderChecks(): string {
+    const n = remaining();
+    const groups = CHECKLIST.map((g) => {
+      const rows = g.items
+        .map((it) => {
+          const r = checks[it.id];
+          const mark = r?.state === 'ok' ? '<span class="ck ok">できた</span>' : r?.state === 'ng' ? '<span class="ck ng">おかしい</span>' : '<span class="ck">まだ</span>';
+          const open = openId === it.id;
+          const body = open
+            ? `<div class="ck-body">
+                <div class="ck-l">やり方</div><ol>${it.how.map((h) => `<li>${esc(h)}</li>`).join('')}</ol>
+                <div class="ck-l">こうなれば正しい</div><div class="ck-ok">${esc(it.ok)}</div>
+                <div class="ck-btns">${it.go ? `<button data-go="${it.go}">行く：${esc(it.goLabel ?? '')}</button>` : ''}
+                  <button data-check="${it.id}:ok" class="okb">できた</button><button data-check="${it.id}:ng" class="ngb">おかしい</button>
+                  ${r ? `<button data-check="${it.id}:clear">まだにもどす</button>` : ''}</div>
+                <textarea data-memo="${it.id}" placeholder="おかしいときは、ひとことメモ（どこで・どうなった）">${esc(r?.memo ?? '')}</textarea>
+                ${r ? `<div class="dv-note">記録：${r.at}</div>` : ''}
+              </div>`
+            : '';
+          return `<div class="ck-item${open ? ' open' : ''}"><button class="ck-title" data-open="${it.id}">${mark}${esc(it.title)}</button>${body}</div>`;
+        })
+        .join('');
+      return `<section class="ck-group"><h3>${esc(g.name)}</h3>${rows}</section>`;
+    }).join('');
+    return `<div class="dv-note">まだ確かめていない（できた以外）：<b>${n}</b> / ${CHECK_ITEMS.length}　項目を押すと、やり方が開く。結果は開発用の保存に残る。</div>${groups}`;
+  }
 
   function render(): void {
     const s = api.save();
@@ -267,8 +360,15 @@ export function mountDevPanel(api: DevApi): void {
     const zones = Object.values(MAPS)
       .map((m) => `<button data-place="${m.id}">${esc(m.id === 'mansion' ? '黒金邸（夜）' : m.name)}</button>`)
       .join('');
+    const tabs = `<button data-tab="checks" class="${tab === 'checks' ? 'on' : ''}">確かめること ${remaining()}</button><button data-tab="tools" class="${tab === 'tools' ? 'on' : ''}">道具</button>`;
+    if (tab === 'checks') {
+      panel.innerHTML = `
+        <div class="dv-head"><b>開発用</b>${tabs}<span></span><button data-close="1">閉じる</button></div>
+        <div class="dv-body checks">${renderChecks()}</div>`;
+      return;
+    }
     panel.innerHTML = `
-      <div class="dv-head"><b>開発用</b><span>保存は「開発用データ」（ふつうのデータとは別）</span><button data-close="1">閉じる</button></div>
+      <div class="dv-head"><b>開発用</b>${tabs}<span>保存は「開発用データ」（ふつうのデータとは別）</span><button data-close="1">閉じる</button></div>
       <div class="dv-body">
         <section><h3>もどす・データ</h3>
           ${b('undo', `ひとつ前にもどす（${undo.length}）`)}${b('copyNormal', 'ふつうのデータを写して始める')}${b('clearDev', '開発用データを消す')}
@@ -283,7 +383,7 @@ export function mountDevPanel(api: DevApi): void {
           ${b('allWeapons', '武器を全部')}${b('gear5', '★5の装備を足す')}
         </section>
         <section><h3>戦い（戦いの中で）</h3>
-          ${b('win', 'すぐ勝つ')}${b('lose', 'すぐ負ける')}${b('hp1', '敵の体力を1に')}${b('noTrace', `裏の追跡ゲージを止める：${opts.noTrace ? 'オン' : 'オフ'}`, opts.noTrace)}
+          ${b('win', 'すぐ勝つ')}${b('lose', 'すぐ負ける')}${b('hp1', '敵の体力を1に')}${b('energy', 'ゲージを満タンに')}${b('noTrace', `裏の追跡ゲージを止める：${opts.noTrace ? 'オン' : 'オフ'}`, opts.noTrace)}
         </section>
         <section><h3>解放</h3>
           ${b('unlockAll', '戦いを全部解放')}${b('questsAccept', '頼みごとを全部受ける')}${b('questsReset', '頼みごとを元にもどす')}${b('hiddenReset', '隠し要素を元にもどす')}${b('daily', 'きょうの回数をもどす')}

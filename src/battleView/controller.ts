@@ -92,6 +92,15 @@ export class BattleController {
     this.battle.activeId = null;
     this.wake();
   }
+  /** 開発用：必殺技と合わせ技のゲージを満タンにする */
+  devFillEnergy(): void {
+    for (const u of this.battle.aliveAllies()) {
+      u.energy = u.energyMax;
+      this.hud.setEnergy(u.uid, u.energy, u.energyMax);
+    }
+    if (this.battle.hacker) this.battle.hacker.energy = this.battle.hacker.energyMax;
+    this.refreshUlts();
+  }
   /** 開発用：敵の体力を1にする */
   devEnemiesToOne(): void {
     for (const u of this.battle.aliveEnemies()) {

@@ -89,3 +89,78 @@
   font-size: 11px;
   margin: 3px 0;
 }
+
+.devbadge em {
+  font: 700 10px system-ui, sans-serif;
+  font-style: normal;
+  color: #ffcc33;
+  text-shadow: 0 1px 2px #000;
+}
+.devpanel .dv-body.checks {
+  display: block;
+}
+.devpanel .ck-group {
+  margin-bottom: 8px;
+}
+.devpanel .ck-item {
+  border-bottom: 1px solid rgba(255, 204, 51, 0.15);
+}
+.devpanel .ck-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  text-align: left;
+  background: transparent;
+  border: none;
+  font-weight: 600;
+}
+.devpanel .ck {
+  flex: none;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #555;
+  color: #fff;
+}
+.devpanel .ck.ok {
+  background: #2f8a4a;
+}
+.devpanel .ck.ng {
+  background: #b8304e;
+}
+.devpanel .ck-body {
+  padding: 2px 8px 8px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.devpanel .ck-body ol {
+  margin: 2px 0 6px;
+  padding-left: 20px;
+}
+.devpanel .ck-l {
+  color: #ffcc33;
+  font-size: 11px;
+  font-weight: 700;
+}
+.devpanel .ck-ok {
+  margin-bottom: 6px;
+}
+.devpanel .ck-btns .okb {
+  background: #1f5a30;
+}
+.devpanel .ck-btns .ngb {
+  background: #6a1f30;
+}
+.devpanel textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 44px;
+  margin-top: 4px;
+  font: 12px system-ui, sans-serif;
+  color: #fff4d0;
+  background: #1a1604;
+  border: 1px solid rgba(255, 204, 51, 0.4);
+  border-radius: 4px;
+}

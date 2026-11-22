@@ -889,7 +889,38 @@ export function start(): void {
         const n = ctrl?.battle.net;
         if (n) n.noTrace = on;
       },
-      goPlace: (id) => {
+      fillEnergy: () => ctrl?.devFillEnergy(),
+      go: (where) => {
+        const [kind, a, slot] = where.split(':');
+        if (ctrl) ctrl.stop(); // 戦いの中なら、やめてから行く
+        window.setTimeout(() => {
+          if (kind === 'battle') {
+            save.phase = 'night';
+            persist();
+            endInfiltration();
+            void transition(GAME_DATA.encounters[a].name, '開発用：確かめる', () => void runBattle(a));
+          } else if (kind === 'hub') {
+            save.phase = 'night';
+            persist();
+            endInfiltration();
+            showHub('開発用：確かめる');
+          } else if (kind === 'gacha') {
+            save.phase = 'night';
+            if ((save.items.stone ?? 0) < 10000) save.items.stone = 10000; // ガチャを確かめられるように
+            persist();
+            endInfiltration();
+            showHub();
+            openGacha(save, rng, persist, () => showHub());
+          } else if (kind === 'zone') {
+            if (slot === 'morning' || slot === 'lunch' || slot === 'after') save.talksToday = slot === 'morning' ? 0 : slot === 'lunch' ? 1 : 2;
+            devGoPlace(a);
+          } else if (kind === 'mansion') devGoPlace('mansion');
+        }, ctrl ? 400 : 0);
+      },
+      goPlace: (id) => devGoPlace(id),
+      setTime: (t) => devSetTime(t),
+    });
+    function devGoPlace(id: string): void {
         if (ctrl) return;
         if (id === 'mansion') {
           save.phase = 'night';
@@ -904,8 +935,8 @@ export function start(): void {
         leaveForField();
         const map = MAPS[id];
         void transition(map.name, '開発用', () => enterZone(id.startsWith('town') ? 'town' : 'school', id, null, map.name));
-      },
-      setTime: (t) => {
+    }
+    function devSetTime(t: 'morning' | 'lunch' | 'after' | 'night'): void {
         if (ctrl) return;
         if (t === 'night') {
           save.phase = 'night';
@@ -919,8 +950,7 @@ export function start(): void {
         persist();
         if (fieldRun && fieldRun.kind !== 'mansion') reenter();
         else startSchool('開発用：時間帯を変えた');
-      },
-    });
+    }
   }
 
   // 開発サーバーだけ：確かめ用に、戦いを一瞬で終わらせる（公開ページには入らない）
