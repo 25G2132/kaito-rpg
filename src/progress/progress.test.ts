@@ -256,9 +256,10 @@ describe('ごほうび', () => {
 });
 
 describe('釣り合い（何百回も戦わせて勝率を出す）', () => {
-  const winRate = (save: SaveData, enc: string, n: number, seed0 = 5000) => {
+  /** ura＝裏の遊び方（auto＝自動だけ、manual＝手で遊んだときのまね） */
+  const winRate = (save: SaveData, enc: string, n: number, ura: 'auto' | 'manual' = 'manual', seed0 = 5000) => {
     let w = 0;
-    for (let i = 0; i < n; i++) if (runAuto(new Battle(GAME_DATA, { party: partyFor(save), encounter: enc, seed: seed0 + i })) === 'won') w++;
+    for (let i = 0; i < n; i++) if (runAuto(new Battle(GAME_DATA, { party: partyFor(save), encounter: enc, seed: seed0 + i }), 500, ura) === 'won') w++;
     return w / n;
   };
   /** 材料の戦いを farms 回くり返して、おまかせで育てる。挑める一番上の段階へ行き、負けた段階はしばらく避ける */
@@ -298,8 +299,21 @@ describe('釣り合い（何百回も戦わせて勝率を出す）', () => {
     for (const seed of [1, 2]) expect(winRate(grow(10, seed), 'vault', 50), 'seed ' + seed).toBeLessThanOrEqual(0.1);
   });
 
-  // ふつうは20〜25回で勝てるようになる。運が悪くても30回あれば、どの種でもほぼ勝てる
-  it('材料の戦いを30回くり返して育てると、ボスにほぼ勝てる', () => {
-    for (const seed of [1, 2, 3, 4]) expect(winRate(grow(30, seed), 'vault', 100), 'seed ' + seed).toBeGreaterThanOrEqual(0.9);
+  // ボスは「防壁」で守られていて、裏で防壁の装置を破っている間だけ大きなダメージが通る。
+  // ふつうに育てた20回のところで、裏を自動にまかせると勝てるか負けるかぎりぎり（40〜60%）。
+  // 裏を手で遊ぶと、はっきり楽になる。
+  it('20回育てたとき、裏が自動だけだと勝率はぎりぎり（40〜60%）。手で遊ぶと、はっきり勝ちやすい', () => {
+    const saves = [1, 2, 3].map((seed) => grow(20, seed));
+    const avg = (ura: 'auto' | 'manual') => saves.reduce((s, sv) => s + winRate(sv, 'vault', 40, ura), 0) / saves.length;
+    const auto = avg('auto');
+    const manual = avg('manual');
+    expect(auto).toBeGreaterThanOrEqual(0.4);
+    expect(auto).toBeLessThanOrEqual(0.6);
+    expect(manual).toBeGreaterThanOrEqual(auto + 0.15);
+  });
+
+  // 運が悪くても30回あれば、裏を手で遊ぶと、どの種でもほぼ勝てる
+  it('材料の戦いを30回くり返して育て、裏を手で遊ぶと、ボスにほぼ勝てる', () => {
+    for (const seed of [1, 2, 3, 4]) expect(winRate(grow(30, seed), 'vault', 60), 'seed ' + seed).toBeGreaterThanOrEqual(0.9);
   });
 });

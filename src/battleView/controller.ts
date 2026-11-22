@@ -284,7 +284,7 @@ export class BattleController {
           }
           const main = e.targets[0] ?? null;
           const toFoe = main && b.unit(main)?.side !== u.side;
-          if (toFoe) back = await st.lunge(u.uid, main, e.kind);
+          if (toFoe) back = await st.lunge(u.uid, main, e.kind === 'combo' ? 'ult' : e.kind);
           else if (e.targets.length && main !== u.uid) await st.cast(u.uid);
           else if (main === u.uid) await st.cast(u.uid);
           break;

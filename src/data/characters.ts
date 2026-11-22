@@ -6,7 +6,7 @@ import { GACHA_CHARS } from './gachaChars';
 // キャラを足すときは、ここに1人ぶん書き足すだけでよい（自動戦闘もデータを見て動く）。
 //
 // 相性の組み合わせ：
-//   シンの「侵入ハック」で〔解析〕 → アカリの「紅蓮一閃」が2倍
+//   シン（裏）が弱点の装置を破ると〔解析〕 → アカリの「紅蓮一閃」が2倍
 //   アカリの攻撃で〔燃焼〕       → ハヤテの「煽り風」が燃焼を2倍にして、すぐ燃やす
 
 const MAIN_CHARACTERS: Record<string, CharacterDef> = {
@@ -25,10 +25,11 @@ const MAIN_CHARACTERS: Record<string, CharacterDef> = {
       name: '回し蹴り',
       kind: 'basic',
       target: 'oneFoe',
-      desc: '敵1体にダメージ。〔燃焼〕をつける',
+      desc: '敵1体にダメージ。〔燃焼〕をつける。ときどき盗む（敵の強化を奪う）',
       effects: [
         { kind: 'damage', mult: 1.0, toughness: 10 },
         { kind: 'status', status: 'burn', turns: 2 },
+        { kind: 'steal', chance: 0.3, to: 'main' },
       ],
     },
     skill: {
@@ -59,8 +60,9 @@ const MAIN_CHARACTERS: Record<string, CharacterDef> = {
   shin: {
     id: 'shin',
     name: 'シン',
-    role: '支援（ハッカー）',
-    profile: '主人公（男の子）。前に出ず、ハッキングで弱点を暴き、味方を強める',
+    role: '裏の担当（ハッカー）',
+    profile: '主人公（男の子）。表には出ず、離れた所から敵の警備システムに侵入する。弱点を暴き、守りを下げ、強化を盗む',
+    ura: true,
     element: 'thunder',
     base: { hp: 800, atk: 90, def: 55, spd: 115, critRate: 0.05, critDmg: 0.5 },
     energyMax: 100,

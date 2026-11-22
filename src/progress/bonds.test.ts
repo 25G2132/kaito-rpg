@@ -42,19 +42,16 @@ describe('絆', () => {
     expect(memberFor(s, 'yuki').mods?.healPct).toBeCloseTo(0.15);
   });
 
-  it('シンの絆 Lv3 で、〔解析〕が3回の番まで続く（技の新しい効果が戦いに効く）', () => {
+  it('シンの絆 Lv3 で、裏で装置を破るごとに合わせ技のゲージが多くたまる（育成が裏に効く）', () => {
     const run = (bond: number) => {
       const s = defaultSave();
       s.bonds.shin = bond;
       const b = new Battle(GAME_DATA, { party: partyFor(s), encounter: { ...GAME_DATA.encounters.patrol1, waves: [['robot']] }, seed: 1 });
-      const shin = b.allies.find((u) => u.defId === 'shin')!;
-      b.phase = 'command';
-      b.activeId = shin.uid;
-      b.command('skill');
-      return b.hasStatus(b.enemies[0], 'exposed')?.turns;
+      const e0 = b.hacker!.energy;
+      for (let i = 0; i < 40 && b.hacker!.energy === e0; i++) b.advanceUra(0.5, 'manual', { autoPick: true, careful: true });
+      return b.hacker!.energy - e0;
     };
-    expect(run(0)).toBe(2);
-    expect(run(BOND_NEED[3])).toBe(3);
+    expect(run(BOND_NEED[3])).toBeGreaterThan(run(0));
   });
 
   it('どの仲間の絆も、会話とごほうびがそろっている', () => {

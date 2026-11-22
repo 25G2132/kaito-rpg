@@ -45,9 +45,13 @@ export type Effect =
   /** 番を早める（pct＝1回ぶんの待ち時間の割合） */
   | { kind: 'advance'; pct: number; to?: EffectTo }
   /** 悪い状態を消す */
-  | { kind: 'cleanse'; to?: EffectTo };
+  | { kind: 'cleanse'; to?: EffectTo }
+  /** 盗む：相手の強化を奪う。強化がなければ chance の確率で「盗んだ物」を1つ得る */
+  | { kind: 'steal'; chance: number; to?: EffectTo }
+  /** 敵の弱点を暴く（「？」が見える） */
+  | { kind: 'reveal'; to?: EffectTo };
 
-export type SkillKind = 'basic' | 'skill' | 'ult' | 'enemy';
+export type SkillKind = 'basic' | 'skill' | 'ult' | 'enemy' | 'combo';
 
 export interface SkillDef {
   id: string;
@@ -107,6 +111,8 @@ export interface CharacterDef {
   base: Stats; // レベル1の数字
   energyMax: number;
   ultGame?: 'mash' | 'timing'; // 必殺技のタッチ遊び（連打／止める）
+  /** 裏の担当（表の4人に入らず、裏の画面でハッキングする）。いまはシンだけ */
+  ura?: boolean;
   rarity?: number; // ガチャのキャラなら ★4・★5
   aggro?: number; // 敵からのねらわれやすさ（ふつう 100）
   basic: SkillDef;
@@ -134,6 +140,8 @@ export interface EnemyDef {
   /** HP がこの割合を下回ったら、自分に状態をかける（怒りなど） */
   enrage?: { hpPct: number; status: string; text: string };
   boss?: boolean;
+  /** 防壁：受けるダメージが大きく減る。裏で「防壁」の装置を破っている間だけ消える */
+  barrier?: boolean;
   look: LookDef;
 }
 
@@ -160,7 +168,28 @@ export interface EncounterDef {
   firstClear?: RewardDef; // はじめて勝ったときに、さらにもらえる
 }
 
+/** 合わせ技の演出（組み合わせごとに変える） */
+export interface ComboFx {
+  color: string; // おもな色
+  color2: string; // 2つ目の色
+  camera: 'zoom' | 'orbit' | 'pull' | 'shake'; // カメラの動き
+  effect: 'flame' | 'frost' | 'storm' | 'grid'; // 画面いっぱいの効果
+  callout: string; // 決めの文字
+  sub: string; // 決めの文字の下の小さな文字
+}
+
+/** 合わせ技：決まった2人の組み合わせで撃つ。2人とも出ていて、2人のゲージが cost の割合ずつたまっていれば撃てる */
+export interface ComboDef {
+  id: string;
+  name: string;
+  members: [string, string]; // キャラの id（裏の担当も入れられる）
+  cost: number; // それぞれのゲージを使う割合（0.5 なら半分）
+  skill: SkillDef;
+  fx: ComboFx;
+}
+
 export interface GameData {
+  combos: Record<string, ComboDef>;
   elements: Record<string, ElementDef>;
   statuses: Record<string, StatusDef>;
   characters: Record<string, CharacterDef>;

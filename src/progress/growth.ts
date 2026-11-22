@@ -168,7 +168,9 @@ export function memberFor(save: SaveData, charId: string): PartyMember {
 }
 
 export function partyFor(save: SaveData): PartyMember[] {
-  return save.party.map((id) => memberFor(save, id));
+  // 裏の担当（シン）は、いつも裏に出る（表の4人には入らない）
+  const ura = Object.keys(save.chars).filter((id) => CHARACTERS[id]?.ura && !save.party.includes(id));
+  return [...save.party, ...ura].map((id) => memberFor(save, id));
 }
 
 /** 育成をすべて足した数字（画面に出す） */

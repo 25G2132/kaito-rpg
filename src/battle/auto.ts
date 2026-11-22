@@ -1,7 +1,8 @@
 // 自動戦闘の考え方。キャラごとのコードは書かず、技のデータ（効果）を見て決める。
 // だから、データでキャラを足しても、自動戦闘はそのまま動く。
 
-import type { Battle, Unit } from './battle';
+import { URA_SEC_PER_TURN, type Battle, type Unit } from './battle';
+import type { HackMode } from './hack';
 import type { SkillDef } from './types';
 
 export interface AutoChoice {
@@ -105,16 +106,50 @@ export function autoSwap(b: Battle): { out: string; in: string } | null {
   return { out: down.uid, in: fresh.uid };
 }
 
-/** 最後まで自動で戦う（テストと釣り合いの確かめに使う） */
-export function runAuto(b: Battle, maxTurns = 500): Battle['phase'] {
+/** いま撃つとよい合わせ技（相手がいる攻めの技は敵が残っているとき、守りの技は弱っているとき） */
+export function readyCombos(b: Battle): { id: string; target?: string }[] {
+  const out: { id: string; target?: string }[] = [];
+  for (const c of b.combosAvailable()) {
+    if (!b.canCombo(c.id)) continue;
+    const actor = b.aliveAllies().find((u) => c.members.includes(u.defId));
+    if (!actor) continue;
+    const v = evaluateSkill(b, actor, c.skill);
+    const support = c.skill.target === 'allAllies' || c.skill.target === 'oneAlly' || c.skill.target === 'self';
+    if (support ? v.score >= 2 : v.score >= 1 || c.skill.effects.some((e) => e.kind === 'reveal')) out.push({ id: c.id, target: v.target });
+  }
+  return out;
+}
+
+/** 盗んだ物は、いちばん攻撃力の高い前の味方に渡す */
+export function stolenTarget(b: Battle): string | null {
+  if (b.stolen <= 0) return null;
+  const best = [...b.aliveAllies()].sort((x, y) => b.current(y).atk - b.current(x).atk)[0];
+  return best && b.canUseStolen(best.uid) ? best.uid : null;
+}
+
+/**
+ * 最後まで自動で戦う（テストと釣り合いの確かめに使う）。
+ * ura＝裏の遊び方：auto（自動のハッキング）、manual（手で遊んだときのまね：速く破る）、none（裏を動かさない）
+ */
+export function runAuto(b: Battle, maxTurns = 500, ura: HackMode | 'none' = 'auto'): Battle['phase'] {
   while (!b.ended && b.turnCount < maxTurns) {
+    for (const c of readyCombos(b)) {
+      if (b.ended) break;
+      if (b.canCombo(c.id)) b.combo(c.id, c.target);
+    }
+    if (b.ended) break;
     for (const u of readyUltimates(b)) {
       if (b.ended) break;
       if (b.canUlt(u.uid)) b.ultimate(u.uid, u.target);
     }
     if (b.ended) break;
-    if (b.phase === 'between') b.nextTurn();
-    else if (b.phase === 'command') {
+    if (b.phase === 'between') {
+      // 手で遊んだときのまね：自分でねらいを選び、光をよけながら、速く破る
+      if (ura !== 'none') b.advanceUra(URA_SEC_PER_TURN, ura, { autoPick: true, careful: true });
+      if (!b.ended) b.nextTurn();
+    } else if (b.phase === 'command') {
+      const st = stolenTarget(b);
+      if (st) b.useStolen(st);
       const s = autoSwap(b);
       if (s) b.swap(s.out, s.in);
       const c = chooseCommand(b);

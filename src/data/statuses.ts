@@ -61,4 +61,36 @@ export const STATUSES: Record<string, StatusDef> = {
     forcesSkill: 'boss_hammer',
     removedOnBreak: true,
   },
+  // 裏（ハッキング）と盗む
+  firewall: {
+    id: 'firewall',
+    name: '防壁',
+    short: '壁',
+    kind: 'buff',
+    desc: '警備システムの防壁。受けるダメージ-50%。裏で「防壁」の装置を破ると消える',
+    dmgTakenPct: -0.5,
+  },
+  hijacked: {
+    id: 'hijacked',
+    name: '乗っ取り',
+    short: '乗',
+    kind: 'debuff',
+    desc: 'シンに制御を乗っ取られて、次の番は動けない',
+  },
+  drained: {
+    id: 'drained',
+    name: '力を盗まれた',
+    short: '抜',
+    kind: 'debuff',
+    desc: '攻撃力-15%',
+    atkPct: -0.15,
+  },
+  stolen_power: {
+    id: 'stolen_power',
+    name: '盗んだ力',
+    short: '盗',
+    kind: 'buff',
+    desc: '敵から盗んだ力で、攻撃力+25%',
+    atkPct: 0.25,
+  },
 };

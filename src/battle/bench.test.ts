@@ -6,7 +6,7 @@ import type { EncounterDef } from './types';
 
 const one = (enemy: string): EncounterDef => ({ id: 't', name: 't', desc: '', level: 20, waves: [[enemy]] });
 /** 6人（うしろの2人は控え）。ためしに同じキャラを控えにも入れる */
-const six = ['akari', 'shin', 'yuki', 'hayate', 'yuki', 'shin'].map((id) => ({ id, level: 20 }));
+const six = ['akari', 'minato', 'yuki', 'hayate', 'rei', 'tsubaki'].map((id) => ({ id, level: 20 }));
 const of = <T extends BattleEvent['t']>(ev: BattleEvent[], t: T) => ev.filter((e): e is Extract<BattleEvent, { t: T }> => e.t === t);
 
 describe('控えと入れかえ', () => {

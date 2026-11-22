@@ -6,10 +6,12 @@
 //   command('basic'|'skill', 相手)  … 味方の番の行動
 //   ultimate(味方, 相手)   … 必殺技。ゲージが満タンなら、番を待たずにいつでも割り込める
 
+import { HackNet, type HackKind, type HackMode, type HackNode, type HackOpts } from './hack';
 import { makeRng, pickWeighted, type Rng } from './rng';
 import { actionLength, statsAtLevel } from './stats';
 import type {
   CharacterDef,
+  ComboDef,
   Effect,
   EffectTo,
   EnemyDef,
@@ -25,7 +27,11 @@ import type {
 
 export const SP_MAX = 5;
 export const SP_START = 3;
-const ENERGY_BY_KIND = { basic: 20, skill: 30, ult: 5, enemy: 0 } as const;
+const ENERGY_BY_KIND = { basic: 20, skill: 30, ult: 5, enemy: 0, combo: 0 } as const;
+export const HIDDEN_TOUGH = 0.5; // 弱点を暴く前は、弱点で守りを削る量が半分
+export const HACKER_ENERGY_MAX = 100;
+export const HACKER_ENERGY_PER_CRACK = 25; // 裏で点を1つ破るごとに、シンのゲージがたまる
+export const URA_SEC_PER_TURN = 2.0; // 自動テストで、番1つぶんに進める裏の時間（秒）
 const ENERGY_ON_HIT = 10;
 const ENERGY_ON_KILL = 10;
 const NOT_WEAK_MULT = 0.8; // 弱点でない属性は2割減
@@ -74,6 +80,7 @@ export interface Unit {
   bench: boolean; // 控え（前の4人のうしろ。動かず、ねらわれない）
   power: number; // 技の倍率（技レベルで上がる）
   mods: Mods;
+  revealed: boolean; // 敵の弱点が見えているか（裏で暴く）
 }
 
 export type Phase = 'between' | 'command' | 'won' | 'lost';
@@ -110,6 +117,12 @@ export type BattleEvent =
   | { t: 'warn'; unit: string; text: string }
   | { t: 'swap'; out: string; in: string }
   | { t: 'persuade'; unit: string; target: string; ok: boolean }
+  | { t: 'hack'; node: HackKind; enemy?: string; text: string } // 裏で装置を破った
+  | { t: 'reveal'; target: string } // 弱点が見えた
+  | { t: 'steal'; source: string; target: string; status?: string; got: boolean } // 盗んだ（got＝盗んだ物を得た）
+  | { t: 'stolen'; value: number } // 盗んだ物の数
+  | { t: 'combo'; id: string; members: string[] } // 合わせ技
+  | { t: 'hackerEnergy'; value: number }
   | { t: 'end'; result: 'won' | 'lost' };
 
 /** 戦いの始まり方。ambush＝こちらが先に叩いた（敵の番が遅れ、守りも少し削れる）、surprised＝見つかってぶつかられた（敵が先に動く） */
@@ -126,6 +139,12 @@ export interface BattleOptions {
 
 export class Battle {
   readonly data: GameData;
+  /** 裏の担当（シン）。表の4人には入らない。いなければ null */
+  hacker: Unit | null = null;
+  /** 裏の回線図（群れごとに作りなおす） */
+  net: HackNet | null = null;
+  /** 盗んだ物（表の味方に渡せる） */
+  stolen = 0;
   readonly encounter: EncounterDef;
   readonly rng: Rng;
   allies: Unit[] = [];
@@ -150,7 +169,17 @@ export class Battle {
     this.encounter = typeof opts.encounter === 'string' ? data.encounters[opts.encounter] : opts.encounter;
     if (!this.encounter) throw new Error(`戦いが見つからない: ${String(opts.encounter)}`);
     this.rng = makeRng(opts.seed ?? Date.now());
-    this.allies = opts.party.map((m, i) => this.makeAlly(m, i));
+    // 裏の担当は表に入らない
+    const ura = opts.party.find((m) => data.characters[m.id]?.ura);
+    const front = opts.party.filter((m) => m !== ura);
+    this.allies = front.map((m, i) => this.makeAlly(m, i));
+    if (ura) {
+      this.hacker = this.makeAlly(ura, 90);
+      this.hacker.uid = 'h';
+      this.hacker.bench = true;
+      this.hacker.energyMax = HACKER_ENERGY_MAX;
+      this.hacker.energy = Math.round(HACKER_ENERGY_MAX * Math.min(1, ura.mods?.startEnergyPct ?? 0));
+    }
     this.spawnWave(0);
     this.opening = opts.opening ?? 'normal';
     // 始まり方は、はじめの群れにだけ効く
@@ -306,6 +335,12 @@ export class Battle {
       return this.flush();
     }
 
+    if (actor.side === 'enemy' && this.hasStatus(actor, 'hijacked')) {
+      this.emit({ t: 'warn', unit: actor.uid, text: `${actor.name}はシンに乗っ取られて動けない` });
+      this.endTurn(actor);
+      return this.flush();
+    }
+
     if (actor.side === 'enemy') {
       this.enemyAct(actor);
       this.endTurn(actor);
@@ -337,6 +372,161 @@ export class Battle {
     this.boost = Math.max(1, Math.min(ULT_BOOST_MAX, boost));
     this.perform(actor, this.skillsOf(actor)!.ult, target);
     this.boost = 1;
+    return this.flush();
+  }
+
+  // ---------- 裏（ハッキング） ----------
+
+  /** 裏の時間を進める（mode＝自動か、手で遊んでいるか）。破った点の効果を表に届ける */
+  advanceUra(dt: number, mode: HackMode, opts?: HackOpts): BattleEvent[] {
+    if (!this.net || !this.hacker || this.ended) return [];
+    const prev = this.log;
+    this.log = [];
+    const r = this.net.update(dt, mode, opts);
+    for (const n of r.relocked) this.relockHack(n);
+    for (const n of r.cracked) {
+      this.applyHack(n);
+      if (this.ended) break;
+    }
+    const out = this.log;
+    this.log = prev;
+    return out;
+  }
+
+  /** 破った装置の効果 */
+  private applyHack(n: HackNode): void {
+    const h = this.hacker!;
+    const e = n.enemy ? this.unit(n.enemy) : undefined;
+    const alive = !!e && e.alive;
+    switch (n.kind) {
+      case 'weak':
+        if (alive) {
+          this.revealUnit(e!);
+          this.addStatus(h, e!, 'exposed', 99, 1);
+        }
+        this.emit({ t: 'hack', node: n.kind, enemy: e?.uid, text: alive ? `${e!.name}の弱点データを暴いた` : '弱点データを破った' });
+        break;
+      case 'wall':
+        if (alive) {
+          this.addStatus(h, e!, 'defdown', 99, 1);
+          if (this.hasStatus(e!, 'firewall')) this.removeStatus(e!, 'firewall');
+        }
+        this.emit({ t: 'hack', node: n.kind, enemy: e?.uid, text: alive ? `${e!.name}の防壁を破った` : '防壁を破った' });
+        break;
+      case 'buff': {
+        let text = '強化の回線から、力を盗んだ';
+        if (alive) {
+          const buff = this.pickBuff(e!);
+          if (buff) {
+            this.removeStatus(e!, buff);
+            text = buff === 'charging' ? `${e!.name}のため技を盗んで止めた！` : `${e!.name}の${this.data.statuses[buff]?.name ?? '強化'}を盗んだ`;
+          }
+          this.addStatus(h, e!, 'drained', 99, 1);
+        }
+        this.setStolen(this.stolen + 1);
+        this.emit({ t: 'hack', node: n.kind, enemy: e?.uid, text });
+        break;
+      }
+      case 'ctrl':
+        if (alive) this.addStatus(h, e!, 'hijacked', 1, 1);
+        this.emit({ t: 'hack', node: n.kind, enemy: e?.uid, text: alive ? `${e!.name}の制御を乗っ取った` : '制御を乗っ取った' });
+        break;
+      case 'relay':
+        this.emit({ t: 'hack', node: n.kind, text: '中継点を通った' });
+        break;
+      case 'entry':
+        break;
+    }
+    this.gainHackerEnergy(HACKER_ENERGY_PER_CRACK);
+  }
+
+  /** 敵に装置を直された：その装置の効果が切れる */
+  private relockHack(n: HackNode): void {
+    const e = n.enemy ? this.unit(n.enemy) : undefined;
+    const status = n.kind === 'weak' ? 'exposed' : n.kind === 'wall' ? 'defdown' : n.kind === 'buff' ? 'drained' : null;
+    if (e && e.alive && status) this.removeStatus(e, status);
+    // 防壁の装置を直されると、防壁がもどる
+    if (e && e.alive && n.kind === 'wall' && this.data.enemies[e.defId].barrier) this.addStatus(e, e, 'firewall', 999, 1);
+    if (e && e.alive && n.kind !== 'relay') this.emit({ t: 'hack', node: n.kind, enemy: e.uid, text: `${e.name}の装置が直された` });
+  }
+
+  private pickBuff(u: Unit): string | null {
+    const buffs = u.statuses.filter((s) => this.data.statuses[s.id]?.kind === 'buff' && s.id !== 'firewall');
+    if (!buffs.length) return null;
+    return (buffs.find((s) => s.id === 'charging') ?? buffs[0]).id;
+  }
+
+  private revealUnit(u: Unit): void {
+    if (u.revealed || u.side !== 'enemy') return;
+    u.revealed = true;
+    this.emit({ t: 'reveal', target: u.uid });
+  }
+
+  private gainHackerEnergy(n: number): void {
+    const h = this.hacker;
+    if (!h) return;
+    const next = Math.min(h.energyMax, h.energy + n * (1 + (h.mods.energyPct ?? 0)));
+    if (next !== h.energy) {
+      h.energy = next;
+      this.emit({ t: 'hackerEnergy', value: next });
+    }
+  }
+
+  private setStolen(v: number): void {
+    this.stolen = Math.max(0, v);
+    this.emit({ t: 'stolen', value: this.stolen });
+  }
+
+  /** 盗んだ物を表の味方に渡せるか（番を使わない） */
+  canUseStolen(uid: string): boolean {
+    const u = this.unit(uid);
+    return this.stolen > 0 && !this.ended && !!u && u.side === 'ally' && u.alive && !u.bench;
+  }
+  /** 盗んだ物を渡す：攻撃力+25%（2番）と、必殺技ゲージ +20 */
+  useStolen(uid: string): BattleEvent[] {
+    if (!this.canUseStolen(uid)) throw new Error('盗んだ物を渡せない');
+    this.log = [];
+    const u = this.unit(uid)!;
+    this.setStolen(this.stolen - 1);
+    this.addStatus(u, u, 'stolen_power', 2, 1);
+    this.gainEnergy(u, 20);
+    return this.flush();
+  }
+
+  // ---------- 合わせ技 ----------
+
+  /** 合わせ技の2人のうち、いまいる人（表の前の人か、裏の担当） */
+  private comboUnit(charId: string): Unit | undefined {
+    if (this.hacker && this.hacker.defId === charId) return this.hacker;
+    return this.aliveAllies().find((u) => u.defId === charId);
+  }
+  /** この戦いで使える合わせ技（2人とも出ている） */
+  combosAvailable(): ComboDef[] {
+    return Object.values(this.data.combos ?? {}).filter((c) => c.members.every((m) => this.comboUnit(m)));
+  }
+  canCombo(id: string): boolean {
+    const c = this.data.combos?.[id];
+    if (!c || this.ended) return false;
+    return c.members.every((m) => {
+      const u = this.comboUnit(m);
+      return !!u && u.energy >= u.energyMax * c.cost - 1e-9;
+    });
+  }
+  /** 合わせ技（番を待たずに割り込む）。2人のゲージを cost ずつ使う */
+  combo(id: string, target?: string): BattleEvent[] {
+    if (!this.canCombo(id)) throw new Error('合わせ技はまだ使えない');
+    const c = this.data.combos[id];
+    this.log = [];
+    const us = c.members.map((m) => this.comboUnit(m)!);
+    for (const u of us) {
+      u.energy = Math.max(0, u.energy - u.energyMax * c.cost);
+      if (u === this.hacker) this.emit({ t: 'hackerEnergy', value: u.energy });
+      else this.emit({ t: 'energy', unit: u.uid, value: u.energy });
+    }
+    this.emit({ t: 'combo', id, members: us.map((u) => u.uid) });
+    // 撃つのは表の人（2人とも表なら1人目）
+    const actor = us.find((u) => u !== this.hacker) ?? us[0];
+    this.perform(actor, c.skill, target);
     return this.flush();
   }
 
@@ -450,6 +640,7 @@ export class Battle {
       bench: slot >= FRONT,
       power: 1 + SKILL_STEP * (Math.max(1, m.skillLevel ?? 1) - 1),
       mods: m.mods ?? {},
+      revealed: true,
     };
   }
 
@@ -488,8 +679,18 @@ export class Battle {
         bench: false,
         power: 1,
         mods: {},
+        revealed: false,
       };
     });
+    for (const u of this.enemies) if (this.data.enemies[u.defId].barrier) this.addStatus(u, u, 'firewall', 999, 1);
+    if (this.hacker) {
+      this.net = new HackNet(
+        this.enemies.map((u) => {
+          const d = this.data.enemies[u.defId];
+          return { uid: u.uid, boss: !!d.boss, machine: d.look.shape === 'robot' || d.look.shape === 'drone' };
+        }),
+      );
+    }
     this.emit({ t: 'wave', index, total: this.encounter.waves.length, enemies: this.enemies.map((u) => u.uid) });
   }
 
@@ -746,6 +947,22 @@ export class Battle {
           if (this.data.statuses[s.id]?.kind === 'debuff') this.removeStatus(u, s.id);
         }
         break;
+      case 'steal': {
+        if (u.side === actor.side) break;
+        const buff = this.pickBuff(u);
+        if (buff) {
+          this.removeStatus(u, buff);
+          this.setStolen(this.stolen + 1);
+          this.emit({ t: 'steal', source: actor.uid, target: u.uid, status: buff, got: true });
+        } else if (this.rng() < eff.chance) {
+          this.setStolen(this.stolen + 1);
+          this.emit({ t: 'steal', source: actor.uid, target: u.uid, got: true });
+        }
+        break;
+      }
+      case 'reveal':
+        this.revealUnit(u);
+        break;
     }
     void skill;
   }
@@ -820,7 +1037,8 @@ export class Battle {
 
     // 弱点なら守りを削る。削り切ると崩れる
     if (target.alive && weak && !target.broken && toughness > 0 && target.maxToughness > 0) {
-      target.toughness = Math.max(0, target.toughness - toughness);
+      const k = target.revealed ? 1 : HIDDEN_TOUGH;
+      target.toughness = Math.max(0, target.toughness - Math.round(toughness * k));
       this.emit({ t: 'toughness', target: target.uid, value: target.toughness, max: target.maxToughness });
       if (target.toughness === 0) this.breakUnit(actor, target, defMult);
     }

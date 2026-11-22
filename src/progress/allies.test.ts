@@ -39,12 +39,13 @@ describe('協力者と編成', () => {
     expect(validateSave(JSON.parse(JSON.stringify(s)))?.party).toHaveLength(5);
   });
 
-  it('協力者を入れた編成で戦える（5人目は控え）', () => {
+  it('協力者を入れた編成で戦える（シンは裏、表は4人）', () => {
     const s = defaultSave();
     recruitAlly(s, 'guard');
     setParty(s, ['ally_guard', 'shin', 'yuki', 'hayate', 'akari']);
     const b = new Battle(GAME_DATA, { party: partyFor(s), encounter: 'patrol1', seed: 4 });
-    expect(b.allies[4].bench).toBe(true);
+    expect(b.hacker?.defId).toBe('shin');
+    expect(b.allies.map((u) => u.defId)).toEqual(['ally_guard', 'yuki', 'hayate', 'akari']);
     expect(['won', 'lost']).toContain(runAuto(b));
   });
 });

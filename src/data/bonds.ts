@@ -32,9 +32,9 @@ export const BONDS: Record<string, BondDef> = {
     title: '幼なじみ・同じクラス',
     rewards: [
       { level: 2, desc: '攻撃・HP +5%', statPct: STATS_2 },
-      { level: 3, desc: '相性：「侵入ハック」の〔解析〕が3回の番まで続く', extraEffects: { skill: [{ kind: 'status', status: 'exposed', turns: 3 }] } },
+      { level: 3, desc: '裏：装置を1つ破るごとに、合わせ技のゲージが +40% 多くたまる', mods: { energyPct: 0.4 } },
       { level: 4, desc: '攻撃・HP・防御 +5%', statPct: STATS_4 },
-      { level: 5, desc: '新しい効果：必殺技で味方全員の必殺技ゲージ +15', extraEffects: { ult: [{ kind: 'energy', amount: 15, to: 'allAllies' }] } },
+      { level: 5, desc: '裏：合わせ技のゲージが、はじめから半分たまっている', mods: { startEnergyPct: 0.5 } },
     ],
     talks: [
       ['シン', '……コーヒー、いる？　ブラックしかないけど。', 'アカリ', '砂糖もらっていい？　三つ。', 'シン', '……それはもうコーヒーじゃない。'],

@@ -1,3 +1,4 @@
+import { COMBOS } from './combos';
 import type { EncounterDef, GameData } from '../battle/types';
 import { CHARACTERS } from './characters';
 import { ELEMENTS } from './elements';
@@ -93,6 +94,7 @@ export const ENCOUNTERS: Record<string, EncounterDef> = {
 };
 
 export const GAME_DATA: GameData = {
+  combos: COMBOS,
   elements: ELEMENTS,
   statuses: STATUSES,
   characters: CHARACTERS,
