@@ -9,6 +9,8 @@ import { QUESTS } from '../data/quests';
 import { WEAPONS } from '../data/weapons';
 import { GAME_DATA } from '../data';
 import { clearErrors, readErrors } from '../dev/errlog';
+import { simBoss, type SimStats } from '../dev/bossSim';
+import { partyPower } from '../progress/growth';
 import { makeGear } from '../progress/gear';
 import { pityLeft } from '../progress/gacha';
 import { LEVEL_CAPS } from '../progress/growth';
@@ -88,6 +90,7 @@ export function mountDevPanel(api: DevApi): void {
   };
   const remaining = () => CHECK_ITEMS.filter((it) => checks[it.id]?.state !== 'ok').length;
   let openId: string | null = null;
+  let sim: { running: boolean; stop: boolean; done: number; total: number; stats: SimStats[]; team: string } = { running: false, stop: false, done: 0, total: 0, stats: [], team: '' };
 
   // 画面の端の「開発中」と、開くボタン
   const badge = document.createElement('div');
@@ -237,6 +240,33 @@ export function mountDevPanel(api: DevApi): void {
       api.setNoTrace(opts.noTrace);
       render();
     },
+    sim100: () => {
+      if (sim.running) return;
+      const save = api.save();
+      sim = { running: true, stop: false, done: 0, total: 200, stats: [], team: teamText(save) };
+      render(true);
+      void simBoss(
+        save,
+        100,
+        (done, total, stats) => {
+          sim.done = done;
+          sim.total = total;
+          sim.stats = stats;
+          const box = panel.querySelector('.dv-sim');
+          if (box) box.innerHTML = simBody();
+        },
+        () => sim.stop,
+      ).then((stats) => {
+        sim.stats = stats;
+        sim.running = false;
+        const box = panel.querySelector('.dv-sim');
+        if (box) box.innerHTML = simBody();
+        else render(true);
+      });
+    },
+    simStop: () => {
+      sim.stop = true;
+    },
     clearErr: () => {
       clearErrors();
       render(true);
@@ -374,6 +404,32 @@ export function mountDevPanel(api: DevApi): void {
     open?.scrollIntoView({ block: 'nearest' });
   }
 
+  /** ボス戦の試し（端末の上で、少しずつ回す） */
+  function teamText(save: SaveData): string {
+    const ids = [...save.party, ...Object.keys(save.chars).filter((id) => CHARACTERS[id]?.ura && !save.party.includes(id))];
+    const names = ids.map((id) => `${CHARACTERS[id]?.name ?? id} Lv${save.chars[id]?.level ?? '?'}`).join('・');
+    return `${names}（チーム戦力 ${partyPower(save)}）`;
+  }
+  function simBody(): string {
+    const pct = (x: number) => `${Math.round(x * 100)}%`;
+    const head = sim.running
+      ? `<div class="dv-note">回しています… ${sim.done}/${sim.total}　<button data-dev="simStop">やめる</button></div>`
+      : `<button data-dev="sim100">黒金（金庫室の番人）と100回ずつ戦う</button>`;
+    const team = sim.team ? `<div class="dv-note">チーム：${esc(sim.team)}</div>` : '<div class="dv-note">今の編成・レベル・突破・技・武器・装備・絆のまま、自動で戦う。裏が自動のときと、裏を手で遊んだのに近いとき（自分でねらい・光をよける）の2通り。</div>';
+    const rows = sim.stats
+      .filter((st) => st.runs > 0)
+      .map((st: SimStats) => {
+        const losses = st.runs - st.wins;
+        const name = st.ura === 'auto' ? '裏も自動' : '裏を手で遊んだ近さ';
+        const lossText = losses
+          ? `負け ${losses}回：平均 ${Math.round(st.lossTurns)}ターン、ボスまで行けた ${pct(st.lossReachedBoss)}${st.lossReachedBoss > 0 ? `、そのときボスの残りHP 平均 ${pct(st.lossBossHp)}` : ''}。負けた群れ ${st.lossWave.map((n, i) => `${i + 1}つめ:${n}`).join(' ')}`
+          : '負けなし';
+        return `<div class="dv-row"><b>${name}：勝率 ${pct(st.wins / st.runs)}</b>（${st.wins}/${st.runs}）　1回の平均 ${Math.round(st.avgTurns)}ターン<br>${lossText}</div>`;
+      })
+      .join('');
+    return head + team + rows;
+  }
+
   /** 不具合の記録（新しい順に5件）。固まったときの手がかり */
   function errSection(): string {
     const all = readErrors();
@@ -407,6 +463,7 @@ export function mountDevPanel(api: DevApi): void {
       <div class="dv-head"><b>開発用</b>${tabs}<span>保存は「開発用データ」（ふつうのデータとは別）</span><button data-close="1">閉じる</button></div>
       <div class="dv-body">
         ${errSection()}
+        <section style="grid-column:1/-1"><h3>ボス戦の勝率（今のチームのまま、自動で100回ずつ）</h3><div class="dv-sim">${simBody()}</div></section>
         <section><h3>もどす・データ</h3>
           ${b('undo', `ひとつ前にもどす（${undo.length}）`)}${b('copyNormal', 'ふつうのデータを写して始める')}${b('clearDev', '開発用データを消す')}
         </section>
