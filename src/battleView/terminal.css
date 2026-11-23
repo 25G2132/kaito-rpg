@@ -801,3 +801,131 @@
 .ura .u-combos .cbtn {
   height: 48px;
 }
+
+/* ===== 2026-11-23 切りかえボタンを同じ形に（自動・速さ）。オンかオフかが一目で分かる ===== */
+#hud .tbtns {
+  gap: 8px;
+}
+#hud .tbtn.tog,
+#hud .tbtn.pausebtn {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 62px;
+  height: 50px;
+  padding: 0 8px;
+  line-height: 1.15;
+}
+#hud .tbtn.tog b,
+#hud .tbtn.pausebtn b {
+  font-size: 13px;
+}
+#hud .tbtn.tog small,
+#hud .tbtn.pausebtn small {
+  font: 800 11px var(--mono);
+  letter-spacing: 0.06em;
+}
+/* 灯り：オフは暗い、オンは白く点滅 */
+#hud .tbtn.tog .lamp {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #2a333c;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+/* オフ：うすい・点線のふち */
+#hud .tbtn.tog:not(.on) {
+  color: rgba(214, 232, 240, 0.72);
+  border-style: dashed;
+  background: rgba(8, 14, 20, 0.8);
+}
+#hud .tbtn.tog:not(.on) small {
+  color: rgba(214, 232, 240, 0.55);
+}
+/* オン：自動は緑、速さは金色。ぬりつぶし＋光 */
+#hud .tbtn.tog.on {
+  color: #04170c;
+  background: #5ef0a0;
+  border: 1px solid #e0fff0;
+  box-shadow: 0 0 14px rgba(94, 240, 160, 0.75);
+}
+#hud .tbtn.tog.speed.on {
+  background: #ffcc33;
+  border-color: #fff2c0;
+  box-shadow: 0 0 14px rgba(255, 204, 51, 0.75);
+  color: #1a1000;
+}
+#hud .tbtn.tog.on small {
+  font-size: 12px;
+  font-weight: 900;
+}
+#hud .tbtn.tog.on .lamp {
+  background: #fff;
+  box-shadow: 0 0 6px #fff;
+  animation: pulse 0.6s infinite alternate;
+}
+/* 自動のあいだは、下に帯（押すと手動にもどる）。裏を見ているときは出さない（裏の間はいつも自動） */
+#hud .autostrip {
+  display: none;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(max(8px, env(safe-area-inset-bottom)) + 6px);
+  min-height: 52px;
+  padding: 6px 22px;
+  border-radius: 6px;
+  border: 1px solid #5ef0a0;
+  background: rgba(4, 23, 12, 0.86);
+  color: #5ef0a0;
+  pointer-events: auto;
+  box-shadow: 0 0 16px rgba(94, 240, 160, 0.35);
+}
+#hud .autostrip b {
+  display: block;
+  font: 800 15px var(--mono);
+  animation: pulse 0.9s infinite alternate;
+}
+#hud .autostrip small {
+  display: block;
+  font-size: 11px;
+  color: #c8f5dc;
+}
+#hud.auto-on:not(.ura-on) .autostrip {
+  display: block;
+}
+/* だれの番か（コマンドの左） */
+#hud .who {
+  align-self: center;
+  padding: 0 4px;
+  font-size: 12px;
+  color: var(--term);
+  white-space: nowrap;
+}
+#hud .who b {
+  font-size: 15px;
+  color: #fff;
+}
+/* 戦いの外（拠点・結果）では出さない */
+#hud.idle.auto-on .autostrip {
+  display: none;
+}
+/* 自動のあいだは合わせ技も自動で撃つので、押せるボタンとして見せない */
+#hud.auto-on .comborow.has-ready {
+  display: none;
+}
+/* 押した手ごたえ：どのボタンも、押すと少し縮んで明るくなる */
+#hud .tbtn:active,
+#hud .cbtn:active,
+#hud .pcard:active,
+#hud .autostrip:active {
+  transform: scale(0.94);
+  filter: brightness(1.25);
+}
+#hud .autostrip:active {
+  transform: translateX(-50%) scale(0.94);
+}

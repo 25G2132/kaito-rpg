@@ -8,6 +8,7 @@ import { MAPS } from '../data/maps';
 import { QUESTS } from '../data/quests';
 import { WEAPONS } from '../data/weapons';
 import { GAME_DATA } from '../data';
+import { clearErrors, readErrors } from '../dev/errlog';
 import { makeGear } from '../progress/gear';
 import { pityLeft } from '../progress/gacha';
 import { LEVEL_CAPS } from '../progress/growth';
@@ -236,6 +237,10 @@ export function mountDevPanel(api: DevApi): void {
       api.setNoTrace(opts.noTrace);
       render();
     },
+    clearErr: () => {
+      clearErrors();
+      render(true);
+    },
     undo: () => {
       const prev = undo.pop();
       if (!prev) return toast('もどせる操作がない');
@@ -369,6 +374,19 @@ export function mountDevPanel(api: DevApi): void {
     open?.scrollIntoView({ block: 'nearest' });
   }
 
+  /** 不具合の記録（新しい順に5件）。固まったときの手がかり */
+  function errSection(): string {
+    const all = readErrors();
+    const list = all.slice(-5).reverse();
+    const rows = list
+      .map(
+        (e) =>
+          `<div class="dv-err"><b>${esc(e.at)}［${esc(e.where)}］</b> ${esc(e.msg)}${e.state ? `<pre>${esc(JSON.stringify(e.state))}</pre>` : ''}${e.stack ? `<pre>${esc(e.stack)}</pre>` : ''}</div>`,
+      )
+      .join('');
+    return `<section style="grid-column:1/-1"><h3>不具合の記録（${all.length}件・端末の中だけ）</h3>${rows || '<div class="dv-note">記録はありません</div>'}${list.length ? '<button data-dev="clearErr">記録を消す</button>' : ''}</section>`;
+  }
+
   function draw(): void {
     const s = api.save();
     const b = (id: string, label: string, on?: boolean) => `<button data-dev="${id}" class="${on ? 'on' : ''}">${label}</button>`;
@@ -388,6 +406,7 @@ export function mountDevPanel(api: DevApi): void {
     panel.innerHTML = `
       <div class="dv-head"><b>開発用</b>${tabs}<span>保存は「開発用データ」（ふつうのデータとは別）</span><button data-close="1">閉じる</button></div>
       <div class="dv-body">
+        ${errSection()}
         <section><h3>もどす・データ</h3>
           ${b('undo', `ひとつ前にもどす（${undo.length}）`)}${b('copyNormal', 'ふつうのデータを写して始める')}${b('clearDev', '開発用データを消す')}
         </section>

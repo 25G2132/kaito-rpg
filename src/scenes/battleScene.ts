@@ -14,13 +14,14 @@ import { GameClock } from '../battleView/clock';
 import { Hud } from '../battleView/hud';
 import { Stage } from '../battleView/stage';
 import { PerfHud } from '../dev/perfHud';
+import { installErrorHooks, onError, recordError } from '../dev/errlog';
 import { goNight, recordSeen, recruitAlly, sleep, slotOf, talk, talksToNext, TALKS_PER_DAY, type RecruitResult } from '../progress/growth';
 import { SLOT_NAMES, type NpcDef } from '../field/types';
 import { applyRewards, autoInvest, isUnlocked, partyFor, partyPower, recordLoss, rollRewards, type Reward } from '../progress/growth';
 import { DEV_SAVE_KEY, SAVE_KEY, defaultSave, loadSave, storeSave } from '../progress/save';
 import { isDevMode, mountDevPanel } from '../ui/devPanel';
 import { ITEMS } from '../data/items';
-import { esc, matsHtml, oddsText, slotName, stars } from '../ui/fmt';
+import { esc, matsHtml, oddsText, slotName, stars, toast } from '../ui/fmt';
 import { GrowthView } from '../ui/growthView';
 import { openFormation } from '../ui/formationView';
 import { openNotebook } from '../ui/notebookView';
@@ -56,6 +57,9 @@ export function start(): void {
   // URL に ?dev を付けると開発用モード：保存は別（ふつうの進み具合をこわさない）
   const dev = isDevMode();
   const saveKey = dev ? DEV_SAVE_KEY : SAVE_KEY;
+  // 不具合の記録（端末の中だけ）。開発用モードの「道具」で見られる
+  installErrorHooks();
+  onError((e) => toast(dev ? `エラー：${e.where} ${e.msg}` : '問題が起きました（記録しました）'));
   const loaded = loadSave(storage, saveKey);
   let save = loaded.save;
   const persist = () => storeSave(storage, save, saveKey);
@@ -841,21 +845,47 @@ export function start(): void {
   watchOrientation((portrait) => (paused = portrait));
   document.addEventListener('visibilitychange', () => (paused = document.hidden));
   const timer = new THREE.Clock();
-  stage.renderer.setAnimationLoop(() => {
-    const real = Math.min(timer.getDelta(), 0.1);
-    if (paused) return;
+  const tick = (real: number) => {
     if (fieldRun && !fieldRun.busy) {
-      fieldTick(real);
+      try {
+        fieldTick(real);
+      } catch (err) {
+        recordError('field', err);
+      }
       perf?.tick();
       return;
     }
-    const dt = clock.update(real);
-    ctrl?.frame(dt);
-    stage.update(dt);
-    hud.follow(stage);
-    stage.render();
+    // ここで投げられたエラーで毎コマが止まると、画面ごと固まる。拾って記録し、次のコマも動かす
+    try {
+      const dt = clock.update(real);
+      ctrl?.frame(dt);
+      stage.update(dt);
+      hud.follow(stage);
+      stage.render();
+    } catch (err) {
+      recordError('frame', err, ctrl?.debugState());
+    }
     perf?.tick();
+  };
+  stage.renderer.setAnimationLoop(() => {
+    const real = Math.min(timer.getDelta(), 0.1);
+    if (paused) return;
+    tick(real);
   });
+  // 3D の描画が端末に打ち切られた（メモリ不足など）とき：記録し、もどるのを待つ
+  canvas.addEventListener('webglcontextlost', (ev) => {
+    ev.preventDefault();
+    recordError('gpu', new Error('3Dの描画が打ち切られた（webglcontextlost）'), ctrl?.debugState());
+  });
+  canvas.addEventListener('webglcontextrestored', () => recordError('gpu', new Error('3Dの描画がもどった'), ctrl?.debugState()));
+  // 開発用：画面が隠れていてコマが来ないときも、手で時間を進めて確かめられる
+  if (dev) {
+    const w = window as unknown as { __devStep: (sec: number) => void; __devBattle: () => Record<string, unknown> | null };
+    w.__devStep = (sec: number) => {
+      for (let t = 0; t < sec; t += 1 / 30) tick(1 / 30);
+    };
+    w.__devBattle = () => ctrl?.debugState() ?? null;
+  }
 
   // 開発用モード（?dev）：画面の左下の「開発」ボタンで、何でもできる一覧
   if (dev) {

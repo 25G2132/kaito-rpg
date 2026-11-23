@@ -33,16 +33,20 @@ export class Hud {
   private data: GameData;
   private turnbar = el('div', 'turnbar');
   private wave = el('div', 'wave');
-  private pauseBtn = el('button', 'tbtn', 'Ⅱ');
+  private pauseBtn = el('button', 'tbtn pausebtn', '<b>Ⅱ</b><small>止める</small>');
   private totalBox = el('div', 'total', '<div class="tl">総ダメージ</div><div class="tn">0</div>');
   private total = 0;
-  private autoBtn = el('button', 'tbtn', '自動');
+  private autoBtn = el('button', 'tbtn tog auto', '<i class="lamp"></i><b>自動</b><small>OFF</small>');
+  /** 自動のあいだ、下に出す帯（押すと手動にもどる） */
+  private autoStrip = el('button', 'autostrip', '<b>▶▶ 自動で戦闘中</b><small>ここを押すと手動にもどる</small>');
+  /** 味方の番：だれの番か */
+  private who = el('div', 'who');
   private viewBtn = el('button', 'tbtn viewbtn', '<b>⇄ 裏へ</b><small>ハッキング</small>');
   private uraLine = el('div', 'uraline');
   private comboRow = el('div', 'comborow');
   private comboBtns = new Map<string, HTMLButtonElement>();
   private stolenBtn = el('button', 'abtn stolen');
-  private speedBtn = el('button', 'tbtn', '×1');
+  private speedBtn = el('button', 'tbtn tog speed', '<i class="lamp"></i><b>速さ</b><small>×1</small>');
   private party = el('div', 'party');
   private actions = el('div', 'actions hidden');
   private sdesc = el('div', 'sdesc');
@@ -68,12 +72,13 @@ export class Hud {
     btns.append(this.viewBtn, this.autoBtn, this.speedBtn, this.pauseBtn);
     top.append(btns, this.totalBox);
     const row = el('div', 'abtns');
-    row.append(this.infoBtn, this.spBox, this.stolenBtn, this.persuadeBtn, this.basicBtn, this.skillBtn);
+    row.append(this.who, this.infoBtn, this.spBox, this.stolenBtn, this.persuadeBtn, this.basicBtn, this.skillBtn);
     this.actions.append(this.sdesc, row);
-    this.root.append(this.fx, this.turnbar, this.wave, this.uraLine, top, this.party, this.comboRow, this.actions);
+    this.root.append(this.fx, this.turnbar, this.wave, this.uraLine, top, this.party, this.comboRow, this.actions, this.autoStrip);
     document.body.appendChild(this.root);
 
     this.autoBtn.addEventListener('click', () => this.h.onAuto());
+    this.autoStrip.addEventListener('click', () => this.h.onAuto());
     this.speedBtn.addEventListener('click', () => this.h.onSpeed());
     this.pauseBtn.addEventListener('click', () => this.h.onPause());
     this.basicBtn.addEventListener('click', () => this.h.onBasic());
@@ -380,10 +385,15 @@ export class Hud {
 
   setAuto(on: boolean): void {
     this.autoBtn.classList.toggle('on', on);
+    this.autoBtn.setAttribute('aria-pressed', String(on));
+    (this.autoBtn.querySelector('small') as HTMLElement).textContent = on ? 'ON' : 'OFF';
+    this.root.classList.toggle('auto-on', on);
   }
   setSpeed(n: number): void {
-    this.speedBtn.textContent = `×${n}`;
+    (this.speedBtn.querySelector('small') as HTMLElement).textContent = `×${n}`;
     this.speedBtn.classList.toggle('on', n > 1);
+    this.speedBtn.setAttribute('aria-pressed', String(n > 1));
+    this.speedBtn.dataset.level = String(n);
     this.setSpeedVar(n);
   }
 
@@ -401,6 +411,7 @@ export class Hud {
     this.basicBtn.innerHTML = `<div><div class="k">通常攻撃</div><div class="n">${s.basic.name}</div></div><span class="c">+1</span>`;
     this.skillBtn.innerHTML = `<div><div class="k">スキル</div><div class="n">${s.skill.name}</div></div><span class="c">−1</span>`;
     this.skillBtn.disabled = b.sp < 1;
+    this.who.innerHTML = `<b>${u.name}</b>の番`;
     this.sdesc.innerHTML = `<span class="turnname">${u.name}の番</span>　<b>${s.skill.name}</b>：${s.skill.desc}`;
     this.actions.classList.remove('hidden');
   }

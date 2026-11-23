@@ -207,6 +207,15 @@ export class Battle {
   unit(uid: string): Unit | undefined {
     return this.allies.find((u) => u.uid === uid) ?? this.enemies.find((u) => u.uid === uid);
   }
+  /**
+   * 画面で出来事を見せる用：裏のシンと、前の群れの敵も探す。
+   * （出来事は計算が済んでから順に見せるので、見せるころには次の群れに入れかわっていることがある）
+   */
+  anyUnit(uid: string): Unit | undefined {
+    return this.unit(uid) ?? (this.hacker?.uid === uid ? this.hacker : undefined) ?? this.pastEnemies.find((u) => u.uid === uid);
+  }
+  /** 前の群れの敵（画面で見せる用） */
+  private pastEnemies: Unit[] = [];
   /** 前に出ている、倒れていない味方 */
   aliveAllies(): Unit[] {
     return this.allies.filter((u) => u.alive && !u.bench);
@@ -646,6 +655,7 @@ export class Battle {
 
   private spawnWave(index: number): void {
     this.wave = index;
+    if (this.enemies) this.pastEnemies.push(...this.enemies);
     const ids = this.encounter.waves[index];
     this.enemies = ids.map((id, i) => {
       const e = this.data.enemies[id];

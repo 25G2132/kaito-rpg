@@ -1,6 +1,8 @@
 // 戦いの画面の時計。倍速（speed）とスロー（slow）をまとめて掛けて進める。
 // 動き（tween）と待ち（sleep）はすべてこの時計で進むので、倍速にすると全部が速くなる。
 
+import { recordError } from '../dev/errlog';
+
 type Tween = { start: number; dur: number; fn: (p: number) => void; resolve: () => void };
 type Timer = { at: number; resolve: () => void };
 
@@ -15,8 +17,14 @@ export class GameClock {
     const dt = realDt * this.speed * this.slow;
     this.time += dt;
     for (const tw of [...this.tweens]) {
-      const p = Math.min(1, (this.time - tw.start) / tw.dur);
-      tw.fn(p);
+      let p = Math.min(1, (this.time - tw.start) / tw.dur);
+      try {
+        tw.fn(p);
+      } catch (err) {
+        // 動きの途中でエラーが出ても、ほかの動きと待ちは止めない（その動きは終わりにする）
+        recordError('tween', err);
+        p = 1;
+      }
       if (p >= 1) {
         this.tweens.splice(this.tweens.indexOf(tw), 1);
         tw.resolve();

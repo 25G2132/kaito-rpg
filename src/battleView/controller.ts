@@ -7,6 +7,7 @@ import type { GameClock } from './clock';
 import type { Hud } from './hud';
 import type { Stage } from './stage';
 import type { VRM } from '@pixiv/three-vrm';
+import { recordError } from '../dev/errlog';
 
 // 戦いの計算（Battle）と画面（Stage・Hud・裏の画面）をつなぐ。
 // Battle が返す出来事を、順に動き・数字・演出にして見せる。
@@ -48,6 +49,12 @@ export class BattleController {
   private pausedTotal = 0;
   private biggest = 0;
   private synergies = 0;
+  /** 止まっていないかの見張り：最後に戦いが進んだ時刻（実時間） */
+  private lastBeat = performance.now();
+  private lastFrameAt = performance.now();
+  private stallReported = false;
+  private inMini = false; // 必殺技のタッチ遊びの間
+  private errors = 0;
 
   constructor(opts: {
     data: GameData;
@@ -131,6 +138,7 @@ export class BattleController {
   frame(dt: number): void {
     const b = this.battle;
     if (this.stopped || b.ended) return;
+    this.watch();
     if (b.net && dt > 0) {
       const manual = this.view === 'ura';
       const ev = b.advanceUra(dt, manual ? 'manual' : 'auto', manual ? { autoPick: false, careful: false } : undefined);
@@ -142,6 +150,50 @@ export class BattleController {
     const waitingActor = this.waiting && b.phase === 'command' && !this.autoNow ? b.active ?? null : null;
     this.hud.setStolen(b, b.stolen, waitingActor);
     if (this.ura?.visible) this.ura.draw(b, dt, queued);
+  }
+
+  /** 戦いが進んだしるし（見張り用） */
+  private beat(): void {
+    this.lastBeat = performance.now();
+    this.stallReported = false;
+  }
+  /**
+   * 見張り：入力待ち・一時停止・タッチ遊びでもないのに、10秒（実時間）戦いが進まなければ記録する。
+   * 画面が裏に回っていた間（コマが来ない間）は数えない
+   */
+  private watch(): void {
+    const now = performance.now();
+    const gap = now - this.lastFrameAt;
+    this.lastFrameAt = now;
+    if (gap > 1000 || this.paused || this.waiting || this.inMini) {
+      this.lastBeat = now;
+      return;
+    }
+    if (!this.stallReported && now - this.lastBeat > 10000) {
+      this.stallReported = true;
+      recordError('stall', new Error('戦いが10秒進まない'), this.debugState());
+    }
+  }
+  /** いまの戦いのようす（記録用） */
+  debugState(): Record<string, unknown> {
+    const b = this.battle;
+    return {
+      phase: b.phase,
+      active: b.activeId,
+      wave: `${b.wave + 1}/${b.encounter.waves.length}`,
+      turn: b.turnCount,
+      view: this.view,
+      auto: this.auto,
+      speed: this.speed,
+      paused: this.paused,
+      waiting: !!this.waiting,
+      ults: this.ultQueue.map((q) => q.uid),
+      combos: this.comboQueue.map((q) => q.id),
+      clock: { speed: this.clock.speed, slow: this.clock.slow },
+      net: b.net ? { target: b.net.target, at: b.net.at, trace: +b.net.trace.toFixed(2), lockout: +b.net.lockout.toFixed(1) } : null,
+      allies: b.allies.map((u) => `${u.name}${u.bench ? '(控)' : ''} ${u.hp}/${u.maxHp} EN${Math.round(u.energy)}`),
+      enemies: b.enemies.map((u) => `${u.name} ${u.hp}/${u.maxHp}`),
+    };
   }
 
   /** 裏の出来事を、表と裏の両方に小さく出す（動きは止めない） */
@@ -274,11 +326,51 @@ export class BattleController {
     if (b.opening === 'surprised') this.hud.banner('不意打ち！ 敵が先に動く', 'warn');
     await this.clock.sleep(b.opening === 'normal' ? 0.6 : 1.2);
     while (!b.ended && !this.stopped) {
+      this.beat();
+      try {
+        await this.step();
+      } catch (err) {
+        // 何かがおかしくなっても、固まらずに続ける（記録は残す）
+        recordError('battle', err, this.debugState());
+        this.errors++;
+        this.comboQueue = [];
+        this.ultQueue = [];
+        this.waiting = null;
+        this.inMini = false;
+        this.clock.slow = 1;
+        this.hud.showCommand(b, null);
+        if (!b.ended && b.phase === 'command' && !b.active) b.phase = 'between';
+        if (this.errors > 8) {
+          // 直らないときは、拠点へもどす（負けには数えない）
+          this.hud.banner('問題が起きたので、戦いを中断しました', 'warn');
+          await new Promise((r) => setTimeout(r, 1500));
+          this.stopped = true;
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 300));
+      }
+    }
+    this.hud.showCommand(b, null);
+    // 結果の画面の後ろに「自動で戦闘中」の帯を残さない
+    this.hud.root.classList.remove('auto-on');
+    this.ura?.destroy();
+    this.ura = null;
+    this.view = 'omote';
+    this.hud.setView(false);
+    const seconds = Math.round((performance.now() - this.startedAt - this.pausedTotal) / 1000);
+    const result = this.stopped && !b.ended ? 'retreat' : b.phase === 'won' ? 'won' : 'lost';
+    return { result, turns: b.turnCount, biggest: this.biggest, synergies: this.synergies, seconds, totalDamage: this.hud.totalDamage, recruited: [...b.recruited], defeated: [...b.defeatedIds] };
+  }
+
+  /** 戦いの流れの1歩（次の番・必殺技・入力待ちのどれか） */
+  private async step(): Promise<void> {
+    const b = this.battle;
+    {
       await this.flushUlts();
-      if (b.ended || this.stopped) break;
+      if (b.ended || this.stopped) return;
       if (b.phase === 'between') {
         await this.play(b.nextTurn());
-        continue;
+        return;
       }
       // 味方の番
       const actor = b.active!;
@@ -288,20 +380,20 @@ export class BattleController {
         const s = autoSwap(b);
         if (s) {
           await this.play(b.swap(s.out, s.in));
-          continue;
+          return;
         }
         const st = stolenTarget(b);
         if (st) {
           await this.play(b.useStolen(st));
-          continue;
+          return;
         }
         for (const c of readyCombos(b)) if (!this.comboQueue.some((q) => q.id === c.id)) this.comboQueue.push(c);
         for (const u of readyUltimates(b)) this.ultQueue.push(u);
-        if (this.ultQueue.length || this.comboQueue.length) continue;
+        if (this.ultQueue.length || this.comboQueue.length) return;
         const c = chooseCommand(b);
         await this.clock.sleep(0.15);
         await this.play(b.command(c.kind, c.target));
-        continue;
+        return;
       }
       this.ensureTarget();
       this.hud.showCommand(b, actor, this.target);
@@ -309,30 +401,23 @@ export class BattleController {
       this.hud.showCommand(b, null);
       this.swapSel = null;
       this.hud.setSwapSel(null);
-      if (input.kind === 'wake') continue;
+      if (input.kind === 'wake') return;
       if (input.kind === 'swap') {
         await this.play(b.swap(input.out, input.in));
-        continue;
+        return;
       }
       if (input.kind === 'stolen') {
         if (b.canUseStolen(actor.uid)) await this.play(b.useStolen(actor.uid));
-        continue;
+        return;
       }
       if (input.kind === 'persuade') {
         await this.play(b.persuade(this.target!));
-        continue;
+        return;
       }
       this.ensureTarget();
       await this.play(b.command(input.kind, this.target ?? undefined));
+      return;
     }
-    this.hud.showCommand(b, null);
-    this.ura?.destroy();
-    this.ura = null;
-    this.view = 'omote';
-    this.hud.setView(false);
-    const seconds = Math.round((performance.now() - this.startedAt - this.pausedTotal) / 1000);
-    const result = this.stopped && !b.ended ? 'retreat' : b.phase === 'won' ? 'won' : 'lost';
-    return { result, turns: b.turnCount, biggest: this.biggest, synergies: this.synergies, seconds, totalDamage: this.hud.totalDamage, recruited: [...b.recruited], defeated: [...b.defeatedIds] };
   }
 
   private async flushUlts(): Promise<void> {
@@ -357,7 +442,14 @@ export class BattleController {
       let boost = 1;
       const u = this.battle.unit(q.uid)!;
       const c = this.battle.charDef(u);
-      if (!this.autoNow && c) boost = await playUltGame(c.ultGame ?? 'mash', u.name, this.data.elements[u.element]?.color ?? '#fff');
+      if (!this.autoNow && c) {
+        this.inMini = true;
+        try {
+          boost = await playUltGame(c.ultGame ?? 'mash', u.name, this.data.elements[u.element]?.color ?? '#fff');
+        } finally {
+          this.inMini = false;
+        }
+      }
       if (!this.battle.canUlt(q.uid)) continue;
       await this.play(this.battle.ultimate(q.uid, q.target ?? this.target ?? undefined, boost));
     }
@@ -392,9 +484,10 @@ export class BattleController {
 
     for (const e of events) {
       if (this.stopped) return;
+      this.beat();
       switch (e.t) {
         case 'turn': {
-          const u = b.unit(e.unit);
+          const u = b.anyUnit(e.unit);
           hud.setActive(u?.side === 'ally' ? e.unit : null);
           st.setActive(e.unit);
           hud.setTurnOrder(b);
@@ -405,7 +498,8 @@ export class BattleController {
           back = null;
           hits = 0;
           lastAction = e;
-          const u = b.unit(e.unit)!;
+          const u = b.anyUnit(e.unit);
+          if (!u) break;
           const ally = u.side === 'ally';
           const elemColor = this.data.elements[e.element]?.color ?? '#fff';
           if (e.kind === 'ult') {
@@ -417,18 +511,18 @@ export class BattleController {
             hud.banner(e.name, ally ? '' : 'enemy');
           }
           const main = e.targets[0] ?? null;
-          const toFoe = main && b.unit(main)?.side !== u.side;
+          const toFoe = main && b.anyUnit(main)?.side !== u.side;
           if (toFoe) back = await st.lunge(u.uid, main, e.kind === 'combo' ? 'ult' : e.kind);
           else if (e.targets.length && main !== u.uid) await st.cast(u.uid);
           else if (main === u.uid) await st.cast(u.uid);
           break;
         }
         case 'damage': {
-          const target = b.unit(e.target);
+          const target = b.anyUnit(e.target);
           const ally = target?.side === 'ally';
           if (e.synergy) {
             this.synergies++;
-            const from = b.unit(e.synergy.from)?.name ?? '';
+            const from = b.anyUnit(e.synergy.from)?.name ?? '';
             const status = this.data.statuses[e.synergy.status]?.name ?? '';
             hud.synergy(`${from}の〔${status}〕 × ${lastAction?.name ?? ''}　ダメージ×${e.synergy.mult}`);
             st.shake(0.5);
@@ -470,20 +564,23 @@ export class BattleController {
           break;
         }
         case 'heal': {
-          const t = b.unit(e.target)!;
+          const t = b.anyUnit(e.target);
+          if (!t) break;
           if (e.amount > 0) hud.number(st, e.target, `+${e.amount}`, 'heal');
           hud.setHp(e.target, e.hp, t.maxHp);
           await this.clock.sleep(0.05);
           break;
         }
         case 'shield': {
-          const t = b.unit(e.target)!;
+          const t = b.anyUnit(e.target);
+          if (!t) break;
           hud.setShield(e.target, e.amount, t.maxHp);
           if (e.amount > 0) hud.label(st, e.target, 'バリア', '', -50);
           break;
         }
         case 'status': {
-          const t = b.unit(e.target)!;
+          const t = b.anyUnit(e.target);
+          if (!t) break;
           const d = this.data.statuses[e.status];
           hud.setStatuses(b, t);
           if (d && t.side === 'enemy') hud.label(st, e.target, d.name, d.kind === 'debuff' ? 'warn' : '', -55);
@@ -491,17 +588,18 @@ export class BattleController {
           break;
         }
         case 'statusEnd': {
-          const t = b.unit(e.target);
+          const t = b.anyUnit(e.target);
           if (t) hud.setStatuses(b, t);
           break;
         }
         case 'amplify': {
-          const t = b.unit(e.target)!;
+          const t = b.anyUnit(e.target);
+          if (!t) break;
           const d = this.data.statuses[e.status];
           hud.setStatuses(b, t);
           if (e.synergyFrom) {
             this.synergies++;
-            const from = b.unit(e.synergyFrom)?.name ?? '';
+            const from = b.anyUnit(e.synergyFrom)?.name ?? '';
             hud.synergy(`${from}の〔${d?.name}〕 ${e.from} → ${e.to}　×2`);
             st.shake(0.35);
             st.burst(e.target, '#ff8a3d', 60, 1.4);
@@ -512,7 +610,7 @@ export class BattleController {
           break;
         }
         case 'toughness': {
-          const t = b.unit(e.target);
+          const t = b.anyUnit(e.target);
           hud.setToughness(e.target, e.value, e.max, !!t?.broken && e.value === 0);
           break;
         }
@@ -525,7 +623,8 @@ export class BattleController {
           break;
         }
         case 'recover': {
-          const t = b.unit(e.unit)!;
+          const t = b.anyUnit(e.unit);
+          if (!t) break;
           hud.setToughness(e.unit, t.maxToughness, t.maxToughness, false);
           hud.label(st, e.unit, '立て直した（1回休み）', '', -50);
           await this.clock.sleep(0.6);
@@ -540,7 +639,8 @@ export class BattleController {
           hud.setSp(e.value);
           break;
         case 'energy': {
-          const t = b.unit(e.unit)!;
+          const t = b.anyUnit(e.unit);
+          if (!t) break;
           hud.setEnergy(e.unit, e.value, t.energyMax);
           break;
         }
@@ -568,12 +668,12 @@ export class BattleController {
           st.swapActors(e.out, e.in);
           hud.arrange(b);
           hud.syncAll(b);
-          hud.banner(`交代！ ${b.unit(e.out)?.name} → ${b.unit(e.in)?.name}`);
+          hud.banner(`交代！ ${b.anyUnit(e.out)?.name} → ${b.anyUnit(e.in)?.name}`);
           await this.clock.sleep(0.5);
           break;
         }
         case 'persuade': {
-          const t = b.unit(e.target);
+          const t = b.anyUnit(e.target);
           hud.label(st, e.target, e.ok ? '説得成功！' : '説得に失敗…', e.ok ? 'break' : 'warn', -40);
           if (e.ok) {
             hud.banner(`${t?.name}が協力者になった！`, 'wave');

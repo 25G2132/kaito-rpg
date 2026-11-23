@@ -164,3 +164,17 @@
   border: 1px solid rgba(255, 204, 51, 0.4);
   border-radius: 4px;
 }
+.devpanel .dv-err {
+  font-size: 11px;
+  margin: 4px 0;
+  padding: 4px;
+  background: rgba(184, 48, 78, 0.18);
+  border-radius: 4px;
+}
+.devpanel .dv-err pre {
+  margin: 2px 0 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-size: 10px;
+  opacity: 0.85;
+}
